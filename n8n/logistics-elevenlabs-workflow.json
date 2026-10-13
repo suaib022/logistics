@@ -70,7 +70,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/quotes",
+        "url": "https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/quotes",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -221,7 +221,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders",
+        "url": "https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/orders",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -513,7 +513,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders?order_id=ilike.{{ $json.order_id }}&select=*,order_events(*)",
+        "url": "=https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/orders?order_id=ilike.{{ $json.order_id }}&select=*,order_events(*)",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -666,7 +666,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/claims",
+        "url": "https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/claims",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -883,7 +883,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://rmbfjtycldualfpunusm.supabase.co/storage/v1/object/claims-evidence/claims/{{ $('Extract Claim Files').item.json.claim_id }}/{{ $now.toMillis() }}_{{ $('Extract Claim Files').item.json.original_filename }}",
+        "url": "=https://YOUR_SUPABASE_PROJECT.supabase.co/storage/v1/object/claims-evidence/claims/{{ $('Extract Claim Files').item.json.claim_id }}/{{ $now.toMillis() }}_{{ $('Extract Claim Files').item.json.original_filename }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -939,7 +939,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/claim_attachments",
+        "url": "https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/claim_attachments",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1058,7 +1058,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders?{{ $json.query_filter }}&order=created_at.desc&select=*,order_events(*)",
+        "url": "=https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/orders?{{ $json.query_filter }}&order=created_at.desc&select=*,order_events(*)",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1260,7 +1260,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders?order_id=eq.{{ encodeURIComponent($json.order_id) }}&select=id,order_id,email,phone",
+        "url": "=https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/orders?order_id=eq.{{ encodeURIComponent($json.order_id) }}&select=id,order_id,email,phone",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1315,7 +1315,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/rpc/create_ticket",
+        "url": "https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/rpc/create_ticket",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1500,7 +1500,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/rpc/add_ticket_note",
+        "url": "https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/rpc/add_ticket_note",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

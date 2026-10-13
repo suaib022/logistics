@@ -3,11 +3,11 @@ import fs from 'fs';
 import path from 'path';
 
 async function main() {
-  const connectionString = 'postgres://postgres.rmbfjtycldualfpunusm:Gr74g2Ymo0L6FaCQ@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres';
+  const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/postgres';
   
   const client = new Client({
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: 10000
   });
 
