@@ -1,9 +1,10 @@
 [build]
   command = "npm run build"
   publish = ".next"
+  SECRETS_SCAN_OMIT_KEYS = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]
 
 [build.environment]
-  NODE_VERSION = "20.18.0"
+  NODE_VERSION = "22"
   NPM_FLAGS = "--legacy-peer-deps"
 
 [[plugins]]
