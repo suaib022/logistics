@@ -1,0 +1,12 @@
+{
+  "name": "ciketo-n8n-tickets",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ciketo Support Tickets & ElevenLabs Handoff workflow for n8n",
+  "scripts": {
+    "build": "node build-workflow.mjs",
+    "validate": "node validate-workflow.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "verify": "npm run build && npm run validate && npm run test"
+  }
+}

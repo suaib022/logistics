@@ -1,0 +1,712 @@
+{
+  "name": "Tickets - Create Handoff (ElevenLabs)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Phase 1: Receive & Validate\n- Authenticate ElevenLabs tool call with **Ciketo Webhook Secret**\n- Centralize non-secret environment configs in **Config**\n- Normalize phone/email, sanitize fields, compute `dedupe_key`\n- Return 400 validation error if required fields are missing",
+        "height": 380,
+        "width": 320,
+        "color": 4
+      },
+      "id": "sticky-receive",
+      "name": "Sticky Note: Receive",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Phase 2: Verify Identity\n- Check if `order_id` is present\n- If present, query Supabase `orders` table\n- Match email or last 7 digits of phone number\n- Sets `order_uuid` and `identity_verified` flag",
+        "height": 380,
+        "width": 320,
+        "color": 5
+      },
+      "id": "sticky-verify",
+      "name": "Sticky Note: Verify",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        920,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Phase 3: Save & Respond\n- Call Supabase RPC `create_ticket(p)`\n- Auto-retry 2x on transient database failure\n- Immediate 200 response (ticket_id, duplicate)\n- Immediate 500 response if save fails (no customer data leaked)",
+        "height": 380,
+        "width": 320,
+        "color": 6
+      },
+      "id": "sticky-save",
+      "name": "Sticky Note: Save",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Phase 4: Transcript Attachment\n- If not duplicate, retrieve conversation from ElevenLabs\n- Retry up to FETCH_ATTEMPTS with 3s wait\n- Format Customer & Agent lines, truncate at TRANSCRIPT_MAX_CHARS\n- Attach note via Supabase RPC `add_ticket_note`",
+        "height": 380,
+        "width": 320,
+        "color": 2
+      },
+      "id": "sticky-transcript",
+      "name": "Sticky Note: Transcript",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2360,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ciketo/tickets/create",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        240
+      ],
+      "webhookId": "ciketo-tickets-create",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cred-webhook-secret",
+          "name": "Ciketo Webhook Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-supabase-url",
+              "name": "SUPABASE_URL",
+              "value": "https://YOUR-PROJECT.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg-transcript-chars",
+              "name": "TRANSCRIPT_MAX_CHARS",
+              "value": 20000,
+              "type": "number"
+            },
+            {
+              "id": "cfg-fetch-attempts",
+              "name": "FETCH_ATTEMPTS",
+              "value": 3,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Pure function: Validate and Normalize Support Ticket Request\n * Ciketo Logistics ElevenLabs Support Ticket Handoff\n */\n\nfunction simpleHash(str) {\n  let hash = 5381;\n  const s = String(str || '');\n  for (let i = 0; i < s.length; i++) {\n    hash = ((hash << 5) + hash) + s.charCodeAt(i);\n    hash = hash & hash; // Convert to 32bit integer\n  }\n  return (hash >>> 0).toString(16).padStart(8, '0');\n}\n\nconst VALID_CATEGORIES = new Set([\n  'unanswered_question',\n  'complaint',\n  'delay',\n  'damage_claim',\n  'billing',\n  'quote_followup',\n  'callback_request',\n  'customs_legal',\n  'other'\n]);\n\nconst VALID_PRIORITIES = new Set([\n  'low',\n  'normal',\n  'high',\n  'urgent'\n]);\n\nconst URGENT_REGEX = /\\b(urgent|asap|emergency|lost|stolen)\\b/i;\n\nfunction normalizeTicketRequest(body, config = {}) {\n  // Reject bodies with wrong types or exceeding expected size\n  if (!body || typeof body !== 'object' || Array.isArray(body)) {\n    return {\n      valid: false,\n      validation_message: 'Request body must be a valid JSON object.'\n    };\n  }\n\n  let bodyStr = '';\n  try {\n    bodyStr = JSON.stringify(body);\n  } catch (e) {\n    return {\n      valid: false,\n      validation_message: 'Request body contains invalid or unparseable JSON.'\n    };\n  }\n\n  if (bodyStr.length > 50000) {\n    return {\n      valid: false,\n      validation_message: 'Request body exceeds maximum allowed size.'\n    };\n  }\n\n  // Trim and extract raw values\n  function cleanStr(val) {\n    if (val === undefined || val === null) return '';\n    return String(val).trim();\n  }\n\n  const rawConvId = cleanStr(body.conversation_id);\n  const rawName = cleanStr(body.customer_name);\n  const rawEmail = cleanStr(body.email);\n  const rawPhone = cleanStr(body.phone);\n  const rawOrderId = cleanStr(body.order_id);\n  const rawCategory = cleanStr(body.category).toLowerCase();\n  const rawPriority = cleanStr(body.priority).toLowerCase();\n  const rawSummary = cleanStr(body.summary);\n  const rawDetails = cleanStr(body.details);\n\n  // 1. Validate conversation_id (required, string starting with \"conv_\")\n  if (!rawConvId || !rawConvId.startsWith('conv_') || rawConvId.length < 6) {\n    return {\n      valid: false,\n      validation_message: 'A valid conversation ID starting with conv_ is required.'\n    };\n  }\n\n  // 2. Validate customer_name (required)\n  if (!rawName) {\n    return {\n      valid: false,\n      validation_message: 'Customer name is required.'\n    };\n  }\n\n  // 3. Normalize email\n  let email = null;\n  if (rawEmail) {\n    const cleanedEmail = rawEmail.toLowerCase();\n    if (cleanedEmail.includes('@') && cleanedEmail.includes('.')) {\n      email = cleanedEmail;\n    }\n  }\n\n  // 4. Normalize phone (keeps digits and a leading +)\n  let phone = null;\n  if (rawPhone) {\n    const hasLeadingPlus = rawPhone.startsWith('+');\n    const digits = rawPhone.replace(/\\D/g, '');\n    if (digits.length > 0) {\n      phone = (hasLeadingPlus ? '+' : '') + digits;\n    }\n  }\n\n  // 5. Email or Phone rule (at least one is required)\n  if (!email && !phone) {\n    return {\n      valid: false,\n      validation_message: 'At least one valid contact method (email or phone) is required.'\n    };\n  }\n\n  // 6. Summary validation (required, 3 to 200 chars)\n  if (!rawSummary || rawSummary.length < 3) {\n    return {\n      valid: false,\n      validation_message: 'Summary must be at least 3 characters long.'\n    };\n  }\n  const summary = rawSummary.slice(0, 200);\n\n  // 7. Details validation (required, at least 5 chars, truncate to 4000)\n  if (!rawDetails || rawDetails.length < 5) {\n    return {\n      valid: false,\n      validation_message: 'Details must be at least 5 characters long.'\n    };\n  }\n  const details = rawDetails.slice(0, 4000);\n\n  // 8. Order ID normalization (upper-cases and trims)\n  const orderId = rawOrderId ? rawOrderId.toUpperCase() : null;\n\n  // 9. Coerce unknown category to \"other\"\n  let category = VALID_CATEGORIES.has(rawCategory) ? rawCategory : 'other';\n\n  // 10. Coerce unknown priority to \"normal\"\n  let priority = VALID_PRIORITIES.has(rawPriority) ? rawPriority : 'normal';\n\n  // 11. Priority elevation rules:\n  // - Raises priority to at least \"high\" when category is damage_claim or delay\n  if (category === 'damage_claim' || category === 'delay') {\n    if (priority === 'low' || priority === 'normal') {\n      priority = 'high';\n    }\n  }\n\n  // - Raises priority to \"high\" when details contain urgent words (urgent, asap, emergency, lost, stolen)\n  if (URGENT_REGEX.test(details)) {\n    if (priority === 'low' || priority === 'normal') {\n      priority = 'high';\n    }\n  }\n\n  // 12. Build dedupe_key from conversation_id, category and simple string hash of lower-cased summary\n  const summaryHash = simpleHash(summary.toLowerCase());\n  const dedupeKey = `${rawConvId}:${category}:${summaryHash}`;\n\n  return {\n    valid: true,\n    validation_message: 'Validation passed.',\n    conversation_id: rawConvId,\n    customer_name: rawName,\n    email: email,\n    phone: phone,\n    order_id: orderId,\n    category: category,\n    priority: priority,\n    summary: summary,\n    details: details,\n    dedupe_key: dedupeKey,\n    // Configuration values passed down\n    SUPABASE_URL: config.SUPABASE_URL || 'https://YOUR-PROJECT.supabase.co',\n    TRANSCRIPT_MAX_CHARS: config.TRANSCRIPT_MAX_CHARS || 20000,\n    FETCH_ATTEMPTS: config.FETCH_ATTEMPTS || 3\n  };\n}\n\n// Module export for Node.js unit tests\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = {\n    simpleHash,\n    normalizeTicketRequest\n  };\n}\n\n// n8n Code node runtime execution\nif (typeof $input !== 'undefined') {\n  const item = $input.first().json || {};\n  const rawBody = item.body || item;\n  let config = {};\n  try {\n    config = $('Config').first().json || {};\n  } catch (e) {\n    config = {};\n  }\n  const result = normalizeTicketRequest(rawBody, config);\n  return [{ json: result }];\n}\n"
+      },
+      "id": "node-validate-normalize",
+      "name": "Validate and Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-valid",
+      "name": "IF Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ \"success\": false, \"error\": \"validation\", \"message\": $json.validation_message }) }}",
+        "responseCode": 400,
+        "options": {}
+      },
+      "id": "node-respond-400",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        960,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-order-id",
+              "leftValue": "={{ Boolean($json.order_id) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-has-order-id",
+      "name": "IF Has Order ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.SUPABASE_URL + '/rest/v1/orders?order_id=eq.' + encodeURIComponent($json.order_id) + '&select=id,order_id,email,phone' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "customAuth",
+        "options": {
+          "alwaysOutputData": true
+        }
+      },
+      "id": "node-lookup-order",
+      "name": "Lookup Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        160
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "customAuth": {
+          "id": "cred-supabase-service-role",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Pure function: Verify Identity Against Order Lookup\n * Ciketo Logistics ElevenLabs Support Ticket Handoff\n */\n\nfunction verifyIdentity(ticket, orderLookupResult) {\n  const t = ticket || {};\n  let orders = [];\n\n  if (Array.isArray(orderLookupResult)) {\n    orders = orderLookupResult;\n  } else if (orderLookupResult && typeof orderLookupResult === 'object') {\n    if (Array.isArray(orderLookupResult.body)) {\n      orders = orderLookupResult.body;\n    } else if (orderLookupResult.id || orderLookupResult.order_id) {\n      orders = [orderLookupResult];\n    }\n  }\n\n  let orderUuid = null;\n  let identityVerified = false;\n\n  // order_uuid if exactly one order matched\n  if (orders.length === 1 && orders[0] && (orders[0].id || orders[0].order_id)) {\n    const matchedOrder = orders[0];\n    orderUuid = matchedOrder.id || null;\n\n    // identity_verified true only when the order matched and:\n    // 1. ticket email equals the order email (case-insensitive)\n    const ticketEmail = (t.email || '').toLowerCase().trim();\n    const orderEmail = (matchedOrder.email || '').toLowerCase().trim();\n    const emailMatches = Boolean(ticketEmail && orderEmail && ticketEmail === orderEmail);\n\n    // 2. OR the last 7 digits of the phones match\n    const ticketDigits = (t.phone || '').replace(/\\D/g, '');\n    const orderDigits = (matchedOrder.phone || '').replace(/\\D/g, '');\n    const phoneMatches = Boolean(\n      ticketDigits.length >= 7 &&\n      orderDigits.length >= 7 &&\n      ticketDigits.slice(-7) === orderDigits.slice(-7)\n    );\n\n    identityVerified = emailMatches || phoneMatches;\n  }\n\n  return {\n    customer_name: t.customer_name || '',\n    email: t.email || null,\n    phone: t.phone || null,\n    order_id: t.order_id || null,\n    order_uuid: orderUuid,\n    category: t.category || 'other',\n    priority: t.priority || 'normal',\n    summary: t.summary || '',\n    details: t.details || '',\n    source: 'chat_agent',\n    is_handoff: true,\n    identity_verified: identityVerified,\n    conversation_id: t.conversation_id || '',\n    dedupe_key: t.dedupe_key || ''\n  };\n}\n\n// Module export for Node.js unit tests\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = {\n    verifyIdentity\n  };\n}\n\n// n8n Code node runtime execution\nif (typeof $input !== 'undefined') {\n  let ticket = {};\n  try {\n    ticket = $('Validate and Normalize').first().json || {};\n  } catch (e) {\n    ticket = $input.first().json || {};\n  }\n\n  let orderLookup = [];\n  try {\n    const lookupNode = $('Lookup Order');\n    if (lookupNode && lookupNode.all) {\n      orderLookup = lookupNode.all().map(i => i.json);\n    }\n  } catch (e) {\n    orderLookup = [];\n  }\n\n  const result = verifyIdentity(ticket, orderLookup);\n  return [{ json: result }];\n}\n"
+      },
+      "id": "node-verify-identity",
+      "name": "Verify Identity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.SUPABASE_URL + '/rest/v1/rpc/create_ticket' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "customAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p\": { \"customer_name\": $json.customer_name, \"email\": $json.email, \"phone\": $json.phone, \"order_id\": $json.order_id, \"order_uuid\": $json.order_uuid, \"category\": $json.category, \"priority\": $json.priority, \"summary\": $json.summary, \"details\": $json.details, \"source\": \"chat_agent\", \"is_handoff\": true, \"identity_verified\": $json.identity_verified, \"conversation_id\": $json.conversation_id, \"dedupe_key\": $json.dedupe_key } } } }",
+        "options": {
+          "retry": {
+            "retry": {
+              "maxTries": 2,
+              "waitBetweenTries": 1000
+            }
+          }
+        }
+      },
+      "id": "node-create-ticket",
+      "name": "Create Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        240
+      ],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "customAuth": {
+          "id": "cred-supabase-service-role",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ \"success\": false, \"error\": \"save_failed\", \"message\": \"Could not create the ticket.\" }) }}",
+        "responseCode": 500,
+        "options": {}
+      },
+      "id": "node-respond-500",
+      "name": "Respond 500",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1920,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ \"success\": true, \"ticket_id\": $json.ticket_id || $json.ticketId || \"TKT-CREATED\", \"duplicate\": Boolean($json.duplicate), \"message\": \"Ticket created.\" }) }}",
+        "responseCode": 200,
+        "options": {}
+      },
+      "id": "node-respond-200",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1920,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-is-duplicate",
+              "leftValue": "={{ Boolean($json.duplicate) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-duplicate",
+      "name": "IF Duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-attempt",
+              "name": "attempt",
+              "value": 1,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-init-attempt",
+      "name": "Init Attempt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2400,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.elevenlabs.io/v1/convai/conversations/' + encodeURIComponent($('Validate and Normalize').first().json.conversation_id) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "retry": {
+            "retry": {
+              "maxTries": 2,
+              "waitBetweenTries": 1000
+            }
+          }
+        }
+      },
+      "id": "node-get-conversation",
+      "name": "Get Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        240
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cred-elevenlabs-api-key",
+          "name": "ElevenLabs API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Pure function: Build Transcript from ElevenLabs Conversation\n * Ciketo Logistics ElevenLabs Support Ticket Handoff\n */\n\nfunction buildTranscript(conversationData, options = {}) {\n  const attempt = Number(options.attempt) || 1;\n  const maxAttempts = Number(options.maxAttempts) || 3;\n  const maxChars = Number(options.maxChars) || 20000;\n\n  const data = conversationData || {};\n  const hasError = Boolean(\n    data.error ||\n    (data.statusCode && data.statusCode >= 400) ||\n    (data.status && data.status >= 400)\n  );\n\n  let rawTranscript = null;\n  if (!hasError && Array.isArray(data.transcript)) {\n    rawTranscript = data.transcript;\n  } else if (!hasError && data.body && Array.isArray(data.body.transcript)) {\n    rawTranscript = data.body.transcript;\n  }\n\n  // Handle fetch failure or missing transcript array\n  if (hasError || rawTranscript === null) {\n    if (attempt < maxAttempts) {\n      return {\n        should_retry: true,\n        attempt: attempt + 1,\n        transcript_text: '',\n        note_kind: 'system',\n        has_user_message: false\n      };\n    }\n    return {\n      should_retry: false,\n      attempt: attempt,\n      transcript_text: 'Transcript could not be retrieved.',\n      note_kind: 'system',\n      has_user_message: false\n    };\n  }\n\n  // Process transcript entries\n  const lines = [];\n  let hasUserMessage = false;\n\n  for (const entry of rawTranscript) {\n    if (!entry || entry.message === null || entry.message === undefined) {\n      continue;\n    }\n\n    const msg = String(entry.message).trim();\n    if (!msg) {\n      continue;\n    }\n\n    const role = String(entry.role || '').toLowerCase();\n    if (role === 'user') {\n      hasUserMessage = true;\n      lines.push('Customer: ' + msg);\n    } else if (role === 'agent') {\n      lines.push('Agent: ' + msg);\n    } else {\n      lines.push('System: ' + msg);\n    }\n  }\n\n  // If transcript was empty or only contained null/empty messages\n  if (lines.length === 0) {\n    if (attempt < maxAttempts) {\n      return {\n        should_retry: true,\n        attempt: attempt + 1,\n        transcript_text: '',\n        note_kind: 'system',\n        has_user_message: false\n      };\n    }\n    return {\n      should_retry: false,\n      attempt: attempt,\n      transcript_text: 'Transcript could not be retrieved.',\n      note_kind: 'system',\n      has_user_message: false\n    };\n  }\n\n  let text = lines.join('\\n');\n\n  // Truncate to maxChars with [truncated] marker if exceeded\n  if (text.length > maxChars) {\n    const marker = '\\n[truncated]';\n    const sliceLen = Math.max(0, maxChars - marker.length);\n    text = text.slice(0, sliceLen) + marker;\n  }\n\n  return {\n    should_retry: false,\n    attempt: attempt,\n    transcript_text: text,\n    note_kind: 'transcript',\n    has_user_message: hasUserMessage\n  };\n}\n\n// Module export for Node.js unit tests\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = {\n    buildTranscript\n  };\n}\n\n// n8n Code node runtime execution\nif (typeof $input !== 'undefined') {\n  const convData = $input.first().json || {};\n  let cfg = {};\n  try {\n    cfg = $('Config').first().json || {};\n  } catch (e) {\n    cfg = {};\n  }\n\n  let attempt = 1;\n  try {\n    const prevAttempt = $('Init Attempt').first().json.attempt;\n    if (prevAttempt) attempt = Number(prevAttempt);\n  } catch (e) {\n    attempt = 1;\n  }\n\n  // Check if we are in a retry loop and attempt was already updated\n  try {\n    const lastAttempt = $('Build Transcript').first().json.attempt;\n    if (lastAttempt && Number(lastAttempt) > attempt) {\n      attempt = Number(lastAttempt);\n    }\n  } catch (e) {\n    // first run\n  }\n\n  const maxChars = cfg.TRANSCRIPT_MAX_CHARS || 20000;\n  const maxAttempts = cfg.FETCH_ATTEMPTS || 3;\n\n  const result = buildTranscript(convData, { attempt, maxAttempts, maxChars });\n  return [{ json: result }];\n}\n"
+      },
+      "id": "node-build-transcript",
+      "name": "Build Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-should-retry",
+              "leftValue": "={{ Boolean($json.should_retry) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-should-retry",
+      "name": "IF Should Retry",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "node-wait-3s",
+      "name": "Wait 3s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3120,
+        420
+      ],
+      "webhookId": "wait-transcript-settle"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.SUPABASE_URL + '/rest/v1/rpc/add_ticket_note' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "customAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p_ticket_uuid\": $('Create Ticket').first().json.id, \"p_author\": \"system\", \"p_kind\": $json.note_kind || \"transcript\", \"p_body\": $json.transcript_text } }}",
+        "options": {}
+      },
+      "id": "node-add-transcript-note",
+      "name": "Add Transcript Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        240
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "customAuth": {
+          "id": "cred-supabase-service-role",
+          "name": "Supabase Service Role"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Validate and Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Normalize": {
+      "main": [
+        [
+          {
+            "node": "IF Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid": {
+      "main": [
+        [
+          {
+            "node": "IF Has Order ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has Order ID": {
+      "main": [
+        [
+          {
+            "node": "Lookup Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Verify Identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Order": {
+      "main": [
+        [
+          {
+            "node": "Verify Identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Identity": {
+      "main": [
+        [
+          {
+            "node": "Create Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Ticket": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 200": {
+      "main": [
+        [
+          {
+            "node": "IF Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Duplicate": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Init Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Attempt": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conversation": {
+      "main": [
+        [
+          {
+            "node": "Build Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Transcript": {
+      "main": [
+        [
+          {
+            "node": "IF Should Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Should Retry": {
+      "main": [
+        [
+          {
+            "node": "Wait 3s",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Transcript Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3s": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "ciketo"
+    }
+  ]
+}

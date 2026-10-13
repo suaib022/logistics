@@ -1,0 +1,10 @@
+{
+  "conversation_id": "conv_normal_transcript",
+  "transcript": [
+    { "role": "agent", "message": "Thank you for contacting Ciketo Logistics. How may I help you today?", "time_in_call_secs": 2 },
+    { "role": "user", "message": "Hi, my cargo arrived but the outer container has visible puncture marks.", "time_in_call_secs": 8 },
+    { "role": "agent", "message": "I apologize for that. Let me file an urgent support ticket for our claims team.", "time_in_call_secs": 15 },
+    { "role": "user", "message": null, "time_in_call_secs": 20 },
+    { "role": "user", "message": "Please make sure they follow up by email.", "time_in_call_secs": 22 }
+  ]
+}

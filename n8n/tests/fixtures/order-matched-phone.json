@@ -1,0 +1,20 @@
+{
+  "ticket": {
+    "conversation_id": "conv_order_match_2",
+    "customer_name": "Laura Roslin",
+    "email": "different_email@other.org",
+    "phone": "+1-800-555-0112",
+    "order_id": "CKT-2026-100012",
+    "summary": "Check tracking status",
+    "details": "Need to confirm delivery address for Hamburg arrival."
+  },
+  "orders": [
+    {
+      "id": "e0000005-ebcd-4354-ab66-c94d2f958742",
+      "order_id": "CKT-2026-100012",
+      "customer_name": "Laura Roslin",
+      "email": "laura@caprica.com",
+      "phone": "555-0112"
+    }
+  ]
+}

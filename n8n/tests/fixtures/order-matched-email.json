@@ -1,0 +1,20 @@
+{
+  "ticket": {
+    "conversation_id": "conv_order_match_1",
+    "customer_name": "Laura Roslin",
+    "email": "laura@caprica.com",
+    "phone": "+1-555-9999",
+    "order_id": "CKT-2026-100012",
+    "summary": "Check cargo departure",
+    "details": "Checking if ocean vessel departed Houston port on schedule."
+  },
+  "orders": [
+    {
+      "id": "e0000005-ebcd-4354-ab66-c94d2f958742",
+      "order_id": "CKT-2026-100012",
+      "customer_name": "Laura Roslin",
+      "email": "laura@caprica.com",
+      "phone": "555-0112"
+    }
+  ]
+}

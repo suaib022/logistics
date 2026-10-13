@@ -1,0 +1,7 @@
+{
+  "conversation_id": "call_12345_invalid",
+  "customer_name": "Test User",
+  "email": "user@example.com",
+  "summary": "Need help with invoice",
+  "details": "Invoice was not sent to my billing email address."
+}

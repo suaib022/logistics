@@ -1,0 +1,20 @@
+{
+  "ticket": {
+    "conversation_id": "conv_order_match_3",
+    "customer_name": "Fraud Impersonator",
+    "email": "intruder@fake.com",
+    "phone": "+1-999-999-9999",
+    "order_id": "CKT-2026-100012",
+    "summary": "Attempting unauthorized inquiry",
+    "details": "Asking for shipment release without matching credentials."
+  },
+  "orders": [
+    {
+      "id": "e0000005-ebcd-4354-ab66-c94d2f958742",
+      "order_id": "CKT-2026-100012",
+      "customer_name": "Laura Roslin",
+      "email": "laura@caprica.com",
+      "phone": "555-0112"
+    }
+  ]
+}

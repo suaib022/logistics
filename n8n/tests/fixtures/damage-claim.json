@@ -1,0 +1,9 @@
+{
+  "conversation_id": "conv_damage_12345",
+  "customer_name": "Charlie Crushed",
+  "email": "charlie@logistics-client.com",
+  "category": "damage_claim",
+  "priority": "low",
+  "summary": "Damaged pallet arrived at loading dock",
+  "details": "Pallet was dropped and packaging was cracked."
+}

@@ -1,0 +1,8 @@
+{
+  "conversation_id": "conv_long_transcript",
+  "transcript": [
+    { "role": "agent", "message": "Welcome to Ciketo support.", "time_in_call_secs": 1 },
+    { "role": "user", "message": "This is a very detailed and long log repeating important shipping logs and telemetry details.", "time_in_call_secs": 5 },
+    { "role": "agent", "message": "Understood, recording all diagnostic messages.", "time_in_call_secs": 10 }
+  ]
+}

@@ -1,0 +1,2171 @@
+{
+  "name": "ElevenLabs Logistics Agent Tools",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1. create_quote (Request Quote)\n**Method**: `POST`\n**Path**: `/webhook/agent/create_quote`\n\n**ElevenLabs Tool Configuration**:\n- **Tool Name**: `create_quote`\n- **Description**: Request a shipping freight quote for cargo between two locations.\n- **Parameters**:\n  - `full_name` (string, required): Customer name\n  - `work_email` (string, required): Customer email\n  - `phone_number` (string): Contact phone number\n  - `company_name` (string): Company name\n  - `origin` (string, required): Departure city/port\n  - `destination` (string, required): Destination city/port\n  - `shipping_method` (string: ocean | air | road | multimodal)\n  - `estimated_weight` (string): Cargo weight e.g. '500 kg'\n  - `preferred_departure_date` (string): Date YYYY-MM-DD\n  - `additional_details` (string): Specific requirements/notes\n\n**Spoken Result**: Confirms quote creation with Quote ID (QT-YYYY-NNNN).",
+        "height": 420,
+        "width": 320,
+        "color": 5
+      },
+      "id": "817ad50b-b3b7-4785-b546-36a019c45db4",
+      "name": "Sticky Note: create_quote",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -360,
+        -100
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent/create_quote",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-create-quote",
+      "name": "WH create_quote",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "wh-create-quote"
+    },
+    {
+      "parameters": {
+        "jsCode": "function rawInput() {\n  const item = $input.first().json || {};\n  let body = item.body;\n  if (typeof body === 'string') {\n    try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }\n  }\n  body = body || {};\n  const query = item.query || {};\n  return Object.assign({}, item, query, body);\n}\n\nfunction cleanString(v) {\n  if (v === undefined || v === null) return '';\n  const s = String(v).trim();\n  if (s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined' || s === '[null]') return '';\n  return s;\n}\n\nfunction normalizeShippingMethod(val) {\n  const s = cleanString(val).toLowerCase();\n  if (s.includes('air') || s.includes('plane') || s.includes('flight')) return 'air';\n  if (s.includes('road') || s.includes('truck') || s.includes('land') || s.includes('ground')) return 'road';\n  if (s.includes('multi') || s.includes('combined')) return 'multimodal';\n  if (s.includes('ocean') || s.includes('sea') || s.includes('ship') || s.includes('vessel') || s.includes('maritime')) return 'ocean';\n  return 'ocean';\n}\n\nfunction asBool(v) {\n  if (v === true || v === false) return v;\n  const s = String(v == null ? '' : v).trim().toLowerCase();\n  return s === 'true' || s === '1' || s === 'yes';\n}\n\nconst p = rawInput();\n\nconst fullName = cleanString(p.full_name || p.name || p.customer_name || p.contact_name);\nconst email = cleanString(p.work_email || p.email || p.customer_email).toLowerCase();\nconst phone = cleanString(p.phone_number || p.phone || p.mobile);\nconst company = cleanString(p.company_name || p.company || p.business_name) || null;\nconst origin = cleanString(p.origin || p.origin_city || p.from || p.pickup_location);\nconst destination = cleanString(p.destination || p.destination_city || p.to || p.delivery_location);\nconst shippingMethod = normalizeShippingMethod(p.shipping_method || p.shipping_mode || p.method || p.freight_type);\nconst weight = cleanString(p.estimated_weight || p.weight || p.weight_kg) || null;\nconst departureDate = cleanString(p.preferred_departure_date || p.departure_date || p.date || p.shipping_date) || null;\nconst details = cleanString(p.additional_details || p.details || p.notes || p.cargo_description) || null;\n\nconst isTextOnly = asBool(p.is_text_only);\nconst channel = isTextOnly ? 'chat_agent' : 'voice_agent';\n\nconst missing = [];\nif (!fullName) missing.push('full_name');\nif (!email && !phone) missing.push('work_email or phone_number');\nif (!origin) missing.push('origin');\nif (!destination) missing.push('destination');\n\nif (missing.length > 0) {\n  const speech = \"To prepare your freight quote, I need your name, \" + (!email && !phone ? \"an email or phone number, \" : \"\") + \"origin location, and destination. Could you please share those details?\";\n  return [{\n    json: {\n      valid: false,\n      http_status: 422,\n      error_body: {\n        ok: false,\n        status: 'validation_error',\n        message: speech,\n        missing: missing\n      }\n    }\n  }];\n}\n\nconst quotePayload = {\n  full_name: fullName,\n  company_name: company,\n  work_email: email || (phone ? phone.replace(/\\D/g, '') + '@placeholder.quote' : 'guest@logistics.quote'),\n  phone_number: phone || null,\n  origin: origin,\n  destination: destination,\n  shipping_method: shippingMethod,\n  estimated_weight: weight,\n  preferred_departure_date: departureDate ? departureDate.slice(0, 10) : null,\n  additional_details: details,\n  consent_to_contact: true,\n  source: channel,\n  status: 'new'\n};\n\nreturn [{\n  json: {\n    valid: true,\n    http_status: 200,\n    payload: quotePayload\n  }\n}];"
+      },
+      "id": "d8d1bab7-7f31-44ac-acaf-1c31df0b45cf",
+      "name": "Map Quote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "6acb20eb-766b-4bcc-8bec-e51822687476",
+      "name": "IF Quote Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/quotes",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {}
+      },
+      "id": "c8371fc9-9a3f-4474-8339-b619150953eb",
+      "name": "Supabase Insert Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        780,
+        -60
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\n\nif (res.error || (res.statusCode && res.statusCode >= 400) || (res.body && res.body.error)) {\n  const errMsg = (res.body && (res.body.message || res.body.error)) || res.message || res.error || 'Database error';\n  return [{\n    json: {\n      ok: false,\n      status: 'error',\n      message: \"I encountered an error submitting your quote request: \" + errMsg + \". Please try again or speak with an agent.\",\n      http_status: 500\n    }\n  }];\n}\n\nlet quote = null;\nif (Array.isArray(res)) {\n  quote = res.length > 0 ? res[0] : null;\n} else if (res && res.body) {\n  if (Array.isArray(res.body)) {\n    quote = res.body.length > 0 ? res.body[0] : null;\n  } else if (typeof res.body === 'object' && res.body.quote_id) {\n    quote = res.body;\n  }\n} else if (res && res.quote_id) {\n  quote = res;\n}\n\nconst quoteId = quote && quote.quote_id ? quote.quote_id : 'QT-CONFIRMED';\nconst name = quote && quote.full_name ? quote.full_name : 'Customer';\nconst origin = quote && quote.origin ? quote.origin : 'origin';\nconst destination = quote && quote.destination ? quote.destination : 'destination';\nconst method = quote && quote.shipping_method ? quote.shipping_method : 'freight';\nconst email = quote && quote.work_email ? quote.work_email : '';\n\nconst speech = \"Thank you, \" + name + \"! Your quote request has been submitted successfully with Quote ID \" + quoteId + \". We have logged your \" + method + \" shipment from \" + origin + \" to \" + destination + \". Our logistics team will review current rates and send your full quotation to \" + email + \" shortly.\";\n\nreturn [{\n  json: {\n    ok: true,\n    status: 'quote_created',\n    message: speech,\n    quote_id: quoteId,\n    full_name: name,\n    origin: origin,\n    destination: destination,\n    shipping_method: method,\n    work_email: email,\n    created_at: quote && quote.created_at ? quote.created_at : new Date().toISOString()\n  }\n}];"
+      },
+      "id": "b51d5633-c3ca-47ce-b6dd-b727a2380440",
+      "name": "Format Quote Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "responseCode": "={{ $json.http_status || 200 }}",
+        "options": {}
+      },
+      "id": "23393a33-380a-4cac-84bd-31af72517bf8",
+      "name": "Respond Quote Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1300,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.error_body) }}",
+        "responseCode": "={{ $json.http_status || 422 }}",
+        "options": {}
+      },
+      "id": "ef249c66-8a42-4aa6-b7cc-a5bbf319d451",
+      "name": "Respond Quote Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. create_order (Place Order)\n**Method**: `POST`\n**Path**: `/webhook/agent/create_order`\n\n**ElevenLabs Tool Configuration**:\n- **Tool Name**: `create_order`\n- **Description**: Book and create a freight shipment order directly in the logistics system.\n- **Parameters**:\n  - `customer_name` (string, required): Customer name\n  - `email` (string, required): Customer email\n  - `phone` (string): Contact phone number\n  - `company_name` (string): Business/Company name\n  - `origin` (string, required): Pickup location\n  - `destination` (string, required): Delivery location\n  - `shipping_method` (string: ocean | air | road | multimodal)\n  - `cargo_description` (string): Description of goods\n  - `weight_kg` (number): Weight in kilograms\n  - `packages` (integer): Number of packages/pieces\n  - `preferred_departure_date` (string): Date YYYY-MM-DD\n  - `quote_ref` (string): Quote ID reference (optional)\n  - `notes` (string): Instructions/notes\n\n**Spoken Result**: Confirms booking with Tracking Order ID (CKT-YYYY-NNNNNN).\n**Post-order Automation**: Generates Order Detail Summary PDF via GPT-4o & PDFShift, then emails it to the customer's email.",
+        "height": 480,
+        "width": 320,
+        "color": 4
+      },
+      "id": "994f95b7-1370-428d-af22-7c5430f7df15",
+      "name": "Sticky Note: create_order",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -360,
+        360
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent/create_order",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-create-order",
+      "name": "WH create_order",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        460
+      ],
+      "webhookId": "wh-create-order"
+    },
+    {
+      "parameters": {
+        "jsCode": "function rawInput() {\n  const item = $input.first().json || {};\n  let body = item.body;\n  if (typeof body === 'string') {\n    try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }\n  }\n  body = body || {};\n  const query = item.query || {};\n  return Object.assign({}, item, query, body);\n}\n\nfunction cleanString(v) {\n  if (v === undefined || v === null) return '';\n  const s = String(v).trim();\n  if (s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined' || s === '[null]') return '';\n  return s;\n}\n\nfunction normalizeShippingMethod(val) {\n  const s = cleanString(val).toLowerCase();\n  if (s.includes('air') || s.includes('plane') || s.includes('flight')) return 'air';\n  if (s.includes('road') || s.includes('truck') || s.includes('land') || s.includes('ground')) return 'road';\n  if (s.includes('multi') || s.includes('combined')) return 'multimodal';\n  if (s.includes('ocean') || s.includes('sea') || s.includes('ship') || s.includes('vessel') || s.includes('maritime')) return 'ocean';\n  return 'ocean';\n}\n\nfunction parseNumber(val) {\n  if (val === undefined || val === null || val === '') return null;\n  const cleaned = String(val).replace(/[^0-9.-]/g, '');\n  const n = parseFloat(cleaned);\n  return isNaN(n) ? null : n;\n}\n\nfunction parseInteger(val) {\n  if (val === undefined || val === null || val === '') return null;\n  const cleaned = String(val).replace(/[^0-9-]/g, '');\n  const n = parseInt(cleaned, 10);\n  return isNaN(n) ? null : n;\n}\n\nfunction asBool(v) {\n  if (v === true || v === false) return v;\n  const s = String(v == null ? '' : v).trim().toLowerCase();\n  return s === 'true' || s === '1' || s === 'yes';\n}\n\nconst p = rawInput();\n\nconst customerName = cleanString(p.customer_name || p.full_name || p.name || p.contact_name);\nconst email = cleanString(p.email || p.work_email || p.customer_email).toLowerCase();\nconst phone = cleanString(p.phone || p.phone_number || p.mobile);\nconst company = cleanString(p.company_name || p.company || p.business_name) || null;\nconst origin = cleanString(p.origin || p.origin_city || p.from || p.pickup_location);\nconst destination = cleanString(p.destination || p.destination_city || p.to || p.delivery_location);\nconst shippingMethod = normalizeShippingMethod(p.shipping_method || p.shipping_mode || p.method || p.freight_type);\nconst cargoDescription = cleanString(p.cargo_description || p.cargo || p.description || p.goods) || null;\nconst weightKg = parseNumber(p.weight_kg || p.weight || p.estimated_weight);\nconst packages = parseInteger(p.packages || p.package_count || p.pieces || p.cartons || p.pallets);\nconst departureDate = cleanString(p.preferred_departure_date || p.departure_date || p.date || p.shipping_date) || null;\nconst deliveryDate = cleanString(p.estimated_delivery_date || p.delivery_date || p.eta) || null;\nconst quoteRef = cleanString(p.quote_ref || p.quote_id || p.quote_reference) || null;\nconst notes = cleanString(p.notes || p.special_instructions || p.instructions) || null;\nconst amount = parseNumber(p.amount || p.price || p.total);\n\nconst isTextOnly = asBool(p.is_text_only);\nconst channel = isTextOnly ? 'chat_agent' : 'voice_agent';\n\nconst missing = [];\nif (!customerName) missing.push('customer_name');\nif (!email && !phone) missing.push('email or phone');\nif (!origin) missing.push('origin');\nif (!destination) missing.push('destination');\n\nif (missing.length > 0) {\n  const speech = \"To book your shipment, I need the customer name, \" + (!email && !phone ? \"contact email or phone, \" : \"\") + \"origin location, and destination. Could you provide those?\";\n  return [{\n    json: {\n      valid: false,\n      http_status: 422,\n      error_body: {\n        ok: false,\n        status: 'validation_error',\n        message: speech,\n        missing: missing\n      }\n    }\n  }];\n}\n\nconst orderPayload = {\n  customer_name: customerName,\n  company_name: company,\n  email: email || (phone ? phone.replace(/\\D/g, '') + '@placeholder.order' : 'guest@logistics.order'),\n  phone: phone || null,\n  origin: origin,\n  destination: destination,\n  shipping_method: shippingMethod,\n  cargo_description: cargoDescription,\n  weight_kg: weightKg,\n  packages: packages,\n  preferred_departure_date: departureDate ? departureDate.slice(0, 10) : null,\n  estimated_delivery_date: deliveryDate ? deliveryDate.slice(0, 10) : null,\n  amount: amount,\n  currency: 'USD',\n  quote_ref: quoteRef,\n  notes: notes,\n  consent_to_contact: true,\n  source: channel,\n  status: 'order_placed'\n};\n\nreturn [{\n  json: {\n    valid: true,\n    http_status: 200,\n    payload: orderPayload\n  }\n}];"
+      },
+      "id": "15077bcc-5b84-4aea-950d-8c71cbc2b4da",
+      "name": "Map Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "975a8362-1354-42d3-b7ef-d18b04c7919c",
+      "name": "IF Order Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        520,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {}
+      },
+      "id": "8939d9bc-cf06-41a1-9182-85bca48ef827",
+      "name": "Supabase Insert Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        780,
+        400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\n\nif (res.error || (res.statusCode && res.statusCode >= 400) || (res.body && res.body.error)) {\n  const errMsg = (res.body && (res.body.message || res.body.error)) || res.message || res.error || 'Database error';\n  return [{\n    json: {\n      ok: false,\n      status: 'error',\n      message: \"I encountered an error placing your order: \" + errMsg + \". Please verify details or try again.\",\n      http_status: 500\n    }\n  }];\n}\n\nlet order = null;\nif (Array.isArray(res)) {\n  order = res.length > 0 ? res[0] : null;\n} else if (res && res.body) {\n  if (Array.isArray(res.body)) {\n    order = res.body.length > 0 ? res.body[0] : null;\n  } else if (typeof res.body === 'object' && res.body.order_id) {\n    order = res.body;\n  }\n} else if (res && res.order_id) {\n  order = res;\n}\n\nconst orderId = order && order.order_id ? order.order_id : 'CKT-CONFIRMED';\nconst name = order && order.customer_name ? order.customer_name : 'Customer';\nconst origin = order && order.origin ? order.origin : 'origin';\nconst destination = order && order.destination ? order.destination : 'destination';\nconst method = order && order.shipping_method ? order.shipping_method : 'freight';\nconst email = order && order.email ? order.email : '';\nconst phone = order && order.phone ? order.phone : '';\nconst company = order && order.company_name ? order.company_name : '';\nconst cargo = order && order.cargo_description ? order.cargo_description : '';\nconst weight = order && order.weight_kg !== undefined ? order.weight_kg : null;\nconst pkgs = order && order.packages !== undefined ? order.packages : null;\nconst depDate = order && order.preferred_departure_date ? order.preferred_departure_date : null;\nconst delDate = order && order.estimated_delivery_date ? order.estimated_delivery_date : null;\nconst amt = order && order.amount !== undefined ? order.amount : null;\nconst curr = order && order.currency ? order.currency : 'USD';\nconst notes = order && order.notes ? order.notes : null;\n\nconst speech = \"Your order has been placed successfully! Your tracking Order ID is \" + orderId + \". Your shipment from \" + origin + \" to \" + destination + \" is booked via \" + method + \" transport under status 'Order Placed'. You can track your shipment anytime with this tracking ID.\";\n\nreturn [{\n  json: {\n    ok: true,\n    status: 'order_placed',\n    message: speech,\n    order_id: orderId,\n    tracking_id: orderId,\n    customer_name: name,\n    email: email,\n    phone: phone,\n    company_name: company,\n    origin: origin,\n    destination: destination,\n    shipping_method: method,\n    cargo_description: cargo,\n    weight_kg: weight,\n    packages: pkgs,\n    preferred_departure_date: depDate,\n    estimated_delivery_date: delDate,\n    amount: amt,\n    currency: curr,\n    notes: notes,\n    current_status: 'order_placed',\n    created_at: order && order.created_at ? order.created_at : new Date().toISOString()\n  }\n}];"
+      },
+      "id": "30cb3346-6c27-4b05-8d53-c8bb20d1296f",
+      "name": "Format Order Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "responseCode": "={{ $json.http_status || 200 }}",
+        "options": {}
+      },
+      "id": "c79e0150-b1c2-4c12-ab4a-aba11744b0e2",
+      "name": "Respond Order Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1300,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Post-Order PDF & Email Automation\n**Trigger**: Confirmed order placed (`order_placed`)\n\n1. **Normalize Data**: Extracts structured fields from the newly created order.\n2. **AI Generate Order Summary HTML**: Uses GPT-4o to design an executive HTML freight booking confirmation & detail summary table.\n3. **Prepare PDF & Email Payload**: Cleans HTML (with built-in fallback template if AI key is pending) and sets filename & recipient.\n4. **Generate Order PDF (PDFShift)**: Calls PDFShift API (`https://api.pdfshift.io/v3/convert/pdf`) to compile the HTML into a high-res PDF stored in binary `data`.\n5. **Customer Email Delivery**: Sends the booking confirmation email to customer's email with the PDF summary attached.\n\n*Credentials note*: Insert your OpenAI API credential in the AI node, your PDFShift API key (`X-API-Key`) in HTTP Request, and your Gmail credential in the email node.",
+        "height": 380,
+        "width": 1360,
+        "color": 4
+      },
+      "id": "sticky-post-order-pdf-email",
+      "name": "Sticky Note: PDF & Email Automation",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1500,
+        220
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\nif (input.ok === false) {\n  return [];\n}\n\nlet insertedOrder = {};\ntry {\n  const rawInsert = $('Supabase Insert Order').first().json;\n  if (Array.isArray(rawInsert) && rawInsert.length > 0) {\n    insertedOrder = rawInsert[0];\n  } else if (rawInsert && rawInsert.body) {\n    insertedOrder = Array.isArray(rawInsert.body) ? rawInsert.body[0] : rawInsert.body;\n  } else if (rawInsert) {\n    insertedOrder = rawInsert;\n  }\n} catch (e) {\n  insertedOrder = {};\n}\n\nlet mappedPayload = {};\ntry {\n  mappedPayload = $('Map Order').first().json.payload || {};\n} catch (e) {\n  mappedPayload = {};\n}\n\nconst orderId = input.order_id || insertedOrder.order_id || mappedPayload.order_id || 'CKT-CONFIRMED';\nconst customerName = input.customer_name || insertedOrder.customer_name || mappedPayload.customer_name || 'Customer';\nconst email = input.email || insertedOrder.email || mappedPayload.email || '';\nconst phone = input.phone || insertedOrder.phone || mappedPayload.phone || '';\nconst companyName = input.company_name || insertedOrder.company_name || mappedPayload.company_name || '';\nconst origin = input.origin || insertedOrder.origin || mappedPayload.origin || 'Origin Port';\nconst destination = input.destination || insertedOrder.destination || mappedPayload.destination || 'Destination Port';\nconst shippingMethod = (input.shipping_method || insertedOrder.shipping_method || mappedPayload.shipping_method || 'ocean').toUpperCase();\nconst cargoDescription = input.cargo_description || insertedOrder.cargo_description || mappedPayload.cargo_description || 'General Freight Cargo';\nconst weightKg = input.weight_kg !== undefined && input.weight_kg !== null ? input.weight_kg : (insertedOrder.weight_kg ?? mappedPayload.weight_kg ?? null);\nconst packages = input.packages !== undefined && input.packages !== null ? input.packages : (insertedOrder.packages ?? mappedPayload.packages ?? null);\nconst departureDate = input.preferred_departure_date || insertedOrder.preferred_departure_date || mappedPayload.preferred_departure_date || 'TBD';\nconst deliveryDate = input.estimated_delivery_date || insertedOrder.estimated_delivery_date || mappedPayload.estimated_delivery_date || 'TBD';\nconst amount = input.amount !== undefined && input.amount !== null ? input.amount : (insertedOrder.amount ?? mappedPayload.amount ?? null);\nconst currency = input.currency || insertedOrder.currency || mappedPayload.currency || 'USD';\nconst notes = input.notes || insertedOrder.notes || mappedPayload.notes || '';\nconst createdAt = input.created_at || insertedOrder.created_at || new Date().toISOString();\n\nconst isPlaceholderEmail = !email || email.includes('@placeholder.order') || email.includes('guest@logistics');\nconst isDeliverableEmail = !isPlaceholderEmail && email.includes('@') && email.includes('.');\n\nreturn [{\n  json: {\n    order_id: orderId,\n    customer_name: customerName,\n    company_name: companyName,\n    email: email,\n    is_deliverable_email: isDeliverableEmail,\n    phone: phone,\n    origin: origin,\n    destination: destination,\n    shipping_method: shippingMethod,\n    cargo_description: cargoDescription,\n    weight_kg: weightKg,\n    packages: packages,\n    preferred_departure_date: departureDate,\n    estimated_delivery_date: deliveryDate,\n    amount: amount,\n    currency: currency,\n    notes: notes,\n    status: 'Order Placed',\n    created_at: createdAt\n  }\n}];"
+      },
+      "id": "node-normalize-order-data",
+      "name": "Normalize & Structure Order Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "prompt": "define",
+        "text": "=You are an executive document styling engine for Ciketo Logistics.\nGiven the structured order information below, generate a polished, highly professional standalone HTML document (<!DOCTYPE html><html>...</html>) with modern clean inline CSS for an Order Detail Summary / Freight Booking Confirmation PDF:\n\nOrder ID: {{ $json.order_id }}\nCustomer Name: {{ $json.customer_name }}\nCompany: {{ $json.company_name }}\nEmail: {{ $json.email }}\nPhone: {{ $json.phone }}\nOrigin Port: {{ $json.origin }}\nDestination Port: {{ $json.destination }}\nShipping Method: {{ $json.shipping_method }}\nCargo: {{ $json.cargo_description }}\nWeight: {{ $json.weight_kg }} kg\nPackages: {{ $json.packages }}\nDeparture Date: {{ $json.preferred_departure_date }}\nEstimated Delivery Date: {{ $json.estimated_delivery_date }}\nAmount: {{ $json.amount }} {{ $json.currency }}\nSpecial Notes: {{ $json.notes }}\nStatus: Order Placed\n\nDesign requirements: Dark slate header (#0f172a) with bold CIKETO LOGISTICS branding, blue accent (#2563eb), 2-column cards for Shipper and Route details, cargo specs table, commercial total, verification tracking link, and 24/7 support email. Return strictly raw HTML without markdown codeblocks.",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "node-ai-order-summary",
+      "name": "AI Generate Order Summary HTML",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.4,
+      "position": [
+        1820,
+        400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const order = $('Normalize & Structure Order Data').first().json || {};\nlet html = '';\n\ntry {\n  const aiOutput = $input.first().json || {};\n  html = aiOutput.text || (aiOutput.message && aiOutput.message.content) || aiOutput.content || '';\n  html = html.replace(/^```html\\s*/i, '').replace(/```$/i, '').trim();\n} catch (e) {\n  html = '';\n}\n\n// If AI did not return valid HTML (e.g. credentials not set yet), use high-end built-in HTML summary template\nif (!html || !html.includes('<html')) {\n  html = `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>Order Confirmation - ${order.order_id || 'Summary'}</title>\n  <style>\n    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 32px; background: #ffffff; }\n    .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end; }\n    .brand { font-size: 24px; font-weight: 800; color: #0f172a; letter-spacing: 0.5px; }\n    .brand span { color: #2563eb; }\n    .title { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: #64748b; font-weight: 600; margin-top: 4px; }\n    .order-tag { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-family: monospace; font-size: 14px; font-weight: 700; padding: 6px 14px; border-radius: 6px; }\n    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }\n    .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; }\n    .card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 1px; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }\n    .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }\n    .row .label { color: #64748b; }\n    .row .val { font-weight: 600; color: #0f172a; text-align: right; }\n    .status-badge { display: inline-block; background: #dcfce7; color: #15803d; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 12px; }\n    .footer { margin-top: 36px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-align: center; line-height: 1.6; }\n    .footer a { color: #2563eb; text-decoration: none; font-weight: 600; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <div>\n      <div class=\"brand\">CIKETO <span>LOGISTICS</span></div>\n      <div class=\"title\">Freight Booking Confirmation & Order Detail Summary</div>\n    </div>\n    <div class=\"order-tag\">${order.order_id || 'CKT-CONFIRMED'}</div>\n  </div>\n\n  <div class=\"grid\">\n    <div class=\"card\">\n      <div class=\"card-title\">Customer & Shipper</div>\n      <div class=\"row\"><span class=\"label\">Customer:</span><span class=\"val\">${order.customer_name || 'Valued Customer'}</span></div>\n      <div class=\"row\"><span class=\"label\">Company:</span><span class=\"val\">${order.company_name || 'N/A'}</span></div>\n      <div class=\"row\"><span class=\"label\">Email:</span><span class=\"val\">${order.email || 'N/A'}</span></div>\n      <div class=\"row\"><span class=\"label\">Phone:</span><span class=\"val\">${order.phone || 'N/A'}</span></div>\n      <div class=\"row\"><span class=\"label\">Booking Date:</span><span class=\"val\">${(order.created_at || '').slice(0, 10)}</span></div>\n    </div>\n\n    <div class=\"card\">\n      <div class=\"card-title\">Routing & Transit</div>\n      <div class=\"row\"><span class=\"label\">Origin:</span><span class=\"val\">${order.origin || 'N/A'}</span></div>\n      <div class=\"row\"><span class=\"label\">Destination:</span><span class=\"val\">${order.destination || 'N/A'}</span></div>\n      <div class=\"row\"><span class=\"label\">Transport Method:</span><span class=\"val\">${(order.shipping_method || 'FREIGHT').toUpperCase()}</span></div>\n      <div class=\"row\"><span class=\"label\">Departure Date:</span><span class=\"val\">${order.preferred_departure_date || 'TBD'}</span></div>\n      <div class=\"row\"><span class=\"label\">Est. Delivery:</span><span class=\"val\">${order.estimated_delivery_date || 'TBD'}</span></div>\n    </div>\n  </div>\n\n  <div class=\"grid\">\n    <div class=\"card\">\n      <div class=\"card-title\">Cargo Specifications</div>\n      <div class=\"row\"><span class=\"label\">Description:</span><span class=\"val\">${order.cargo_description || 'General Cargo'}</span></div>\n      <div class=\"row\"><span class=\"label\">Weight:</span><span class=\"val\">${order.weight_kg ? order.weight_kg + ' kg' : 'N/A'}</span></div>\n      <div class=\"row\"><span class=\"label\">Packages / Pieces:</span><span class=\"val\">${order.packages || 'N/A'}</span></div>\n      <div class=\"row\"><span class=\"label\">Special Notes:</span><span class=\"val\">${order.notes || 'None'}</span></div>\n    </div>\n\n    <div class=\"card\">\n      <div class=\"card-title\">Commercial & Status</div>\n      <div class=\"row\"><span class=\"label\">Total Amount:</span><span class=\"val\">${order.amount ? '$' + Number(order.amount).toFixed(2) + ' ' + (order.currency || 'USD') : 'Rate on Confirmation'}</span></div>\n      <div class=\"row\"><span class=\"label\">Order Status:</span><span class=\"val\"><span class=\"status-badge\">Order Placed</span></span></div>\n      <div class=\"row\"><span class=\"label\">Payment Terms:</span><span class=\"val\">Standard Commercial Invoice</span></div>\n    </div>\n  </div>\n\n  <div class=\"footer\">\n    <p>Track live shipment status anytime at <strong><a href=\"https://ciketo.com/track-order\">ciketo.com/track-order</a></strong> with Order ID <strong>${order.order_id || ''}</strong>.</p>\n    <p>Ciketo Global Freight Logistics • 24/7 Operations Support: support@ciketo.com</p>\n  </div>\n</body>\n</html>`;\n}\n\nreturn [{\n  json: {\n    source: html,\n    filename: 'Order-Confirmation-' + (order.order_id || 'Summary') + '.pdf',\n    customer_email: order.email || '',\n    customer_name: order.customer_name || 'Customer',\n    order_id: order.order_id || '',\n    origin: order.origin || '',\n    destination: order.destination || '',\n    shipping_method: order.shipping_method || 'ocean'\n  }\n}];"
+      },
+      "id": "node-prepare-pdf-payload",
+      "name": "Prepare PDF & Email Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pdfshift.io/v3/convert/pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "YOUR_PDFSHIFT_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { source: $json.source, filename: $json.filename } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "node-generate-order-pdf",
+      "name": "Generate Order PDF (PDFShift)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2340,
+        400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "emailType": "html",
+        "toList": "={{ $('Prepare PDF & Email Payload').first().json.customer_email || $('Normalize & Structure Order Data').first().json.email }}",
+        "subject": "={{ 'Booking Confirmation: ' + ($('Prepare PDF & Email Payload').first().json.order_id || 'Your Shipment') + ' - Ciketo Logistics' }}",
+        "message": "={{ '<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px;\"><h2 style=\"color: #0f172a;\">Your Freight Order Has Been Confirmed!</h2><p>Dear <strong>' + ($('Prepare PDF & Email Payload').first().json.customer_name || 'Valued Customer') + '</strong>,</p><p>Thank you for placing your freight shipment order with Ciketo Logistics. Your booking has been successfully recorded in our operations system.</p><div style=\"background: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; border-radius: 6px; margin: 18px 0;\"><p style=\"margin: 4px 0;\"><strong>Order Tracking ID:</strong> <span style=\"font-family: monospace; font-size: 1.15em; color: #2563eb; font-weight: bold;\">' + ($('Prepare PDF & Email Payload').first().json.order_id || '') + '</span></p><p style=\"margin: 4px 0;\"><strong>Origin:</strong> ' + ($('Prepare PDF & Email Payload').first().json.origin || '') + '</p><p style=\"margin: 4px 0;\"><strong>Destination:</strong> ' + ($('Prepare PDF & Email Payload').first().json.destination || '') + '</p><p style=\"margin: 4px 0;\"><strong>Shipping Method:</strong> ' + ($('Prepare PDF & Email Payload').first().json.shipping_method || '') + '</p><p style=\"margin: 4px 0;\"><strong>Status:</strong> Order Placed</p></div><p>Attached to this email is your official <strong>Order Detail Summary PDF</strong> containing full cargo specifications, handling notes, and booking data.</p><p>You can track the live status and timeline of your shipment at any time through our online portal using your Tracking Order ID.</p><p style=\"margin-top: 24px;\">Warm regards,<br><strong>Ciketo Logistics Team</strong><br><a href=\"https://ciketo.com\" style=\"color: #2563eb; text-decoration: none;\">ciketo.com</a></p></div>' }}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-send-order-email",
+      "name": "Send Order Email to Customer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2600,
+        400
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.error_body) }}",
+        "responseCode": "={{ $json.http_status || 422 }}",
+        "options": {}
+      },
+      "id": "2e668cdc-97f4-44a9-bb12-32cfdbfedf5e",
+      "name": "Respond Order Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. track_order (Track Shipment)\n**Method**: `POST`\n**Path**: `/webhook/agent/track_order`\n\n**ElevenLabs Tool Configuration**:\n- **Tool Name**: `track_order`\n- **Description**: Track live status, location, and timeline updates of a freight shipment.\n- **Parameters**:\n  - `order_id` (string, required): Tracking or Order ID (e.g. CKT-2026-100001 or 100001)\n\n**Spoken Result**: Speaks the real-time shipping status, current facility/port location, latest update note, and ETA.\n(If order not found: Speaks a helpful lookup reminder).",
+        "height": 380,
+        "width": 320,
+        "color": 6
+      },
+      "id": "edfa0ae3-0337-4e24-9654-e1bfcd274e8c",
+      "name": "Sticky Note: track_order",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -360,
+        840
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent/track_order",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-track-order",
+      "name": "WH track_order",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        940
+      ],
+      "webhookId": "wh-track-order"
+    },
+    {
+      "parameters": {
+        "jsCode": "function rawInput() {\n  const item = $input.first().json || {};\n  let body = item.body;\n  if (typeof body === 'string') {\n    try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }\n  }\n  body = body || {};\n  const query = item.query || {};\n  return Object.assign({}, item, query, body);\n}\n\nfunction cleanString(v) {\n  if (v === undefined || v === null) return '';\n  const s = String(v).trim();\n  if (s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined' || s === '[null]') return '';\n  return s;\n}\n\nfunction normalizeOrderId(val) {\n  let s = cleanString(val).toUpperCase().replace(/\\s+/g, '-');\n  if (/^\\d{6}$/.test(s)) {\n    const year = new Date().getFullYear();\n    return \"CKT-\" + year + \"-\" + s;\n  }\n  const match = s.match(/CKT[-_ ]?(\\d{4})[-_ ]?(\\d+)/i);\n  if (match) {\n    return \"CKT-\" + match[1] + \"-\" + match[2].padStart(6, '0');\n  }\n  return s;\n}\n\nconst p = rawInput();\nconst rawId = p.order_id || p.tracking_number || p.tracking_id || p.order_number || p.id;\nconst orderId = normalizeOrderId(rawId);\n\nif (!orderId) {\n  const speech = \"Please provide your Order ID or tracking number (for example CKT-2026-100001) so I can look up your shipment.\";\n  return [{\n    json: {\n      valid: false,\n      http_status: 422,\n      error_body: {\n        ok: false,\n        status: 'validation_error',\n        message: speech,\n        missing: ['order_id']\n      }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    valid: true,\n    http_status: 200,\n    order_id: orderId\n  }\n}];"
+      },
+      "id": "1244d5d4-c0c9-41b4-8885-ea1d3e4742fe",
+      "name": "Map Track Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "3668515c-f9c3-45e2-a295-189bb0fd6607",
+      "name": "IF Track Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        520,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders?order_id=ilike.{{ $json.order_id }}&select=*,order_events(*)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "db3b8a4d-f822-4ad4-907d-77b2262299e1",
+      "name": "Supabase Query Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        780,
+        880
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\n\nif (res.error || (res.statusCode && res.statusCode >= 400)) {\n  const errMsg = (res.body && (res.body.message || res.body.error)) || res.message || res.error || 'Lookup error';\n  return [{\n    json: {\n      ok: false,\n      status: 'error',\n      message: \"I encountered an error looking up your shipment: \" + errMsg + \". Please try again.\",\n      http_status: 500\n    }\n  }];\n}\n\nlet requestedId = '';\ntry {\n  requestedId = $('Map Track Order').first().json.order_id;\n} catch (e) {\n  requestedId = 'your order';\n}\n\n// Robust extraction handling single object, array, or body wrapper\nlet order = null;\nif (Array.isArray(res)) {\n  order = res.length > 0 ? res[0] : null;\n} else if (res && res.body) {\n  if (Array.isArray(res.body)) {\n    order = res.body.length > 0 ? res.body[0] : null;\n  } else if (typeof res.body === 'object' && res.body.order_id) {\n    order = res.body;\n  }\n} else if (res && res.order_id) {\n  order = res;\n}\n\nif (!order || !order.order_id) {\n  const notFoundSpeech = \"I could not find any shipment with Tracking ID \" + requestedId + \". Please double-check your order number and try again. It typically starts with CKT followed by the year and digits, like CKT-2026-100001.\";\n  return [{\n    json: {\n      ok: false,\n      status: 'not_found',\n      message: notFoundSpeech,\n      order_id: requestedId\n    }\n  }];\n}\n\nconst events = Array.isArray(order.order_events) ? order.order_events : [];\n\n// Sort events by occurred_at desc\nevents.sort((a, b) => new Date(b.occurred_at || b.created_at).getTime() - new Date(a.occurred_at || a.created_at).getTime());\nconst latestEvent = events[0] || null;\n\nconst STATUS_LABELS = {\n  order_placed: 'Order Placed',\n  pending_approval: 'Pending Approval',\n  order_approved: 'Order Approved',\n  booking_confirmed: 'Booking Confirmed',\n  documents_pending: 'Documents Pending',\n  documents_verified: 'Documents Verified',\n  pickup_scheduled: 'Pickup Scheduled',\n  picked_up: 'Picked Up',\n  received_at_origin_facility: 'Received at Origin Facility',\n  export_customs_clearance: 'Export Customs Clearance',\n  ready_for_dispatch: 'Ready for Dispatch',\n  departed_origin: 'Departed Origin Port',\n  in_transit: 'In Transit',\n  arrived_at_transit_hub: 'Arrived at Transit Hub',\n  departed_transit_hub: 'Departed Transit Hub',\n  arrived_at_destination: 'Arrived at Destination Port',\n  import_customs_clearance: 'Import Customs Clearance',\n  customs_cleared: 'Customs Cleared',\n  out_for_delivery: 'Out for Delivery',\n  delivery_attempted: 'Delivery Attempted',\n  delivered: 'Delivered',\n  on_hold: 'On Hold',\n  customs_hold: 'Customs Hold',\n  delayed: 'Delayed',\n  damaged: 'Damaged',\n  lost: 'Lost',\n  returned_to_sender: 'Returned to Sender',\n  cancelled: 'Cancelled',\n  rejected: 'Rejected'\n};\n\nconst humanStatus = STATUS_LABELS[order.status] || order.status.replace(/_/g, ' ');\nconst latestLocation = latestEvent && latestEvent.location ? latestEvent.location : null;\nconst latestNote = latestEvent && latestEvent.note ? latestEvent.note : null;\n\nlet speech = \"Shipment \" + order.order_id + \" for \" + order.customer_name + \" from \" + order.origin + \" to \" + order.destination + \" via \" + order.shipping_method + \" transport is currently \" + humanStatus + \".\";\nif (latestLocation) {\n  speech += \" Current location: \" + latestLocation + \".\";\n}\nif (latestNote && latestNote.toLowerCase() !== 'order created') {\n  speech += \" Latest update: \" + latestNote + \".\";\n}\nif (order.estimated_delivery_date) {\n  speech += \" Estimated delivery date is \" + order.estimated_delivery_date + \".\";\n}\n\nreturn [{\n  json: {\n    ok: true,\n    status: 'order_found',\n    message: speech,\n    order_id: order.order_id,\n    customer_name: order.customer_name,\n    origin: order.origin,\n    destination: order.destination,\n    shipping_method: order.shipping_method,\n    current_status: order.status,\n    human_status: humanStatus,\n    estimated_delivery_date: order.estimated_delivery_date,\n    latest_location: latestLocation,\n    latest_update: latestNote,\n    timeline_count: events.length,\n    events: events.slice(0, 5)\n  }\n}];"
+      },
+      "id": "84b2134b-455c-4a7d-b244-c19af1a8099c",
+      "name": "Format Track Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "responseCode": "={{ $json.http_status || 200 }}",
+        "options": {}
+      },
+      "id": "715cd374-a1d8-460d-893f-1c6f179b964b",
+      "name": "Respond Track Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1300,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.error_body) }}",
+        "responseCode": "={{ $json.http_status || 422 }}",
+        "options": {}
+      },
+      "id": "a70bee35-2473-4b57-927c-70f9b8fbc71b",
+      "name": "Respond Track Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. submit_claim (File Claim or Issue Report)\n**Method**: `POST`\n**Path**: `/webhook/agent/submit_claim`\n\n**ElevenLabs Tool Configuration**:\n- **Tool Name**: `submit_claim`\n- **Description**: File a claim or issue report for a customer (e.g., damaged, torn, late, or missing cargo). Call after collecting the order ID and a description of the issue. If the customer does not have an order ID, collect their full name.\n- **Parameters**:\n  - `conversation_id` (string, required): Dynamic variable `system__conversation_id`\n  - `order_id` (string): Tracking or order ID (e.g. CKT-2026-100015). When provided, customer name, email, and phone are automatically retrieved from the order.\n  - `customer_name` (string): Customer full name (optional if order_id is provided)\n  - `customer_email` (string): Contact email (optional if order_id is provided)\n  - `customer_phone` (string): Contact phone number (optional if order_id is provided)\n  - `issue_type` (string): damaged | missing | delayed | wrong_item | billing | other\n  - `claim_description` (string, required): Detailed problem description\n  - `has_file_attachment` (boolean, required): True if customer uploaded a file/image in chat\n\n**Spoken Result**: Confirms the claim was filed and speaks the reference number.",
+        "height": 520,
+        "width": 320,
+        "color": 2
+      },
+      "id": "sticky-submit-claim",
+      "name": "Sticky Note: submit_claim",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -360,
+        1360
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent/submit_claim",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-submit-claim",
+      "name": "WH submit_claim",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        1460
+      ],
+      "webhookId": "wh-submit-claim"
+    },
+    {
+      "parameters": {
+        "jsCode": "function rawInput() {\n  const item = $input.first().json || {};\n  let body = item.body;\n  if (typeof body === \"string\") {\n    try { body = JSON.parse(body || \"{}\"); } catch (e) { body = {}; }\n  }\n  body = body || {};\n  const query = item.query || {};\n  return Object.assign({}, item, query, body);\n}\n\nfunction cleanString(v) {\n  if (v === undefined || v === null) return \"\";\n  const s = String(v).trim();\n  if (s.toLowerCase() === \"null\" || s.toLowerCase() === \"undefined\" || s === \"[null]\") return \"\";\n  return s;\n}\n\nfunction asBool(v) {\n  if (v === true || v === false) return v;\n  const s = String(v == null ? \"\" : v).trim().toLowerCase();\n  return s === \"true\" || s === \"1\" || s === \"yes\";\n}\n\nconst p = rawInput();\n\nconst conversationId = cleanString(p.conversation_id || p.system__conversation_id || p.call_id) || (\"conv_\" + Date.now());\nconst orderId = cleanString(p.order_id || p.tracking_id || p.tracking_number) || null;\nconst customerName = cleanString(p.customer_name || p.name || p.full_name) || null;\nconst email = cleanString(p.customer_email || p.email || p.work_email).toLowerCase() || null;\nconst phone = cleanString(p.customer_phone || p.phone || p.phone_number) || null;\n\nconst rawIssue = cleanString(p.issue_type || p.type || p.category).toLowerCase();\nconst validIssues = [\"damaged\", \"missing\", \"delayed\", \"wrong_item\", \"billing\", \"other\"];\nlet issueType = \"other\";\nif (rawIssue.includes(\"damage\")) issueType = \"damaged\";\nelse if (rawIssue.includes(\"miss\")) issueType = \"missing\";\nelse if (rawIssue.includes(\"delay\") || rawIssue.includes(\"late\")) issueType = \"delayed\";\nelse if (rawIssue.includes(\"wrong\")) issueType = \"wrong_item\";\nelse if (rawIssue.includes(\"bill\")) issueType = \"billing\";\nelse if (validIssues.includes(rawIssue)) issueType = rawIssue;\n\nconst claimDescription = cleanString(p.claim_description || p.description || p.notes || p.issue_description);\nconst hasFileAttachment = asBool(p.has_file_attachment || p.has_attachment || p.has_file);\n\n// Guardrail: Either order_id OR customer_name is provided, AND claim_description is provided\nconst hasIdentifier = Boolean(orderId || customerName);\nconst isValid = Boolean(claimDescription && hasIdentifier);\n\nlet errorMsg = \"\";\nif (!claimDescription) {\n  errorMsg = \"Please provide a clear description of the issue or damage.\";\n} else if (!hasIdentifier) {\n  errorMsg = \"Please provide an Order ID or your name so we can record your claim.\";\n}\n\nreturn [{\n  json: {\n    valid: isValid,\n    conversation_id: conversationId,\n    order_id: orderId,\n    customer_name: customerName,\n    customer_email: email,\n    customer_phone: phone,\n    issue_type: issueType,\n    claim_description: claimDescription,\n    has_file_attachment: hasFileAttachment,\n    error_body: isValid ? null : {\n      status: \"error\",\n      message: errorMsg\n    }\n  }\n}];"
+      },
+      "id": "node-map-claim",
+      "name": "Map Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        1460
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-claim-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-claim-valid",
+      "name": "IF Claim Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        1460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/claims",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { order_id: $json.order_id, customer_name: $json.customer_name, customer_email: $json.customer_email, customer_phone: $json.customer_phone, issue_type: $json.issue_type, claim_description: $json.claim_description, conversation_id: $json.conversation_id, has_file_attachment: $json.has_file_attachment, status: 'pending_review' } }}",
+        "options": {}
+      },
+      "id": "node-supabase-insert-claim",
+      "name": "Supabase Insert Claim",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        1400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.error_body || { status: 'error', message: 'Order ID or customer name, along with claim description, are required' }) }}",
+        "responseCode": 400,
+        "options": {}
+      },
+      "id": "node-respond-claim-error",
+      "name": "Respond Claim Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        1580
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\n\nif (res.error || (res.statusCode && res.statusCode >= 400) || (res.body && res.body.error)) {\n  const errMsg = (res.body && (res.body.message || res.body.error)) || res.message || res.error || \"Database error\";\n  return [{\n    json: {\n      status: \"error\",\n      message: \"I encountered an error submitting your claim: \" + errMsg + \". Please speak with an agent.\",\n      http_status: 500\n    }\n  }];\n}\n\nlet claim = null;\nif (Array.isArray(res)) {\n  claim = res.length > 0 ? res[0] : null;\n} else if (res && res.body) {\n  if (Array.isArray(res.body)) {\n    claim = res.body.length > 0 ? res.body[0] : null;\n  } else if (typeof res.body === \"object\" && res.body.id) {\n    claim = res.body;\n  }\n} else if (res && res.id) {\n  claim = res;\n}\n\nconst claimId = claim && claim.id ? String(claim.id) : \"CLM-\" + Date.now();\nconst shortRef = claimId.slice(0, 8);\n\nlet mapClaim = {};\ntry {\n  mapClaim = $(\"Map Claim\").first().json || {};\n} catch (e) {\n  mapClaim = {};\n}\n\nconst convId = (claim && claim.conversation_id) || mapClaim.conversation_id || \"\";\nconst hasFile = (claim && claim.has_file_attachment !== undefined) ? claim.has_file_attachment : (mapClaim.has_file_attachment || false);\nconst customerName = (claim && claim.customer_name) || mapClaim.customer_name || \"\";\n\nlet speech = \"Claim filed successfully. Reference \" + shortRef + \".\";\nif (customerName) {\n  speech = \"Claim filed successfully for \" + customerName + \". Reference \" + shortRef + \".\";\n}\n\nreturn [{\n  json: {\n    status: \"success\",\n    claim_id: claimId,\n    claim_reference: shortRef,\n    order_id: (claim && claim.order_id) || mapClaim.order_id || null,\n    customer_name: customerName || null,\n    customer_email: (claim && claim.customer_email) || mapClaim.customer_email || null,\n    customer_phone: (claim && claim.customer_phone) || mapClaim.customer_phone || null,\n    message: speech,\n    conversation_id: convId,\n    has_file_attachment: Boolean(hasFile),\n    created_at: claim && claim.created_at ? claim.created_at : new Date().toISOString()\n  }\n}];"
+      },
+      "id": "node-format-claim-result",
+      "name": "Format Claim Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "responseCode": "={{ $json.http_status || 200 }}",
+        "options": {}
+      },
+      "id": "node-respond-claim-success",
+      "name": "Respond Claim Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1300,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-file-check",
+              "leftValue": "={{ $json.has_file_attachment }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-has-file",
+      "name": "IF Has File",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "node-wait-transcript-settle",
+      "name": "Wait Transcript Settle",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1820,
+        1400
+      ],
+      "webhookId": "wh-wait-transcript-settle"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.elevenlabs.io/v1/convai/conversations/{{ $json.conversation_id || $('Format Claim Result').first().json.conversation_id || $('Map Claim').first().json.conversation_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "YOUR_ELEVENLABS_API_KEY"
+            }
+          ]
+        },
+        "options": {
+          "retry": {
+            "retry": {
+              "maxTries": 3,
+              "waitBetweenTries": 2000
+            }
+          }
+        }
+      },
+      "id": "node-get-elevenlabs-conv",
+      "name": "Get ElevenLabs Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2080,
+        1400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Extract Claim Files from ElevenLabs Conversation Response\n * \n * ASSUMPTION:\n * ElevenLabs ConvAI conversations may store uploaded chat attachments / audio / images\n * under various nested structures (e.g. transcript message attachments, user artifacts,\n * media metadata, or signed tool inputs).\n * This code recursively walks the full JSON response, collects every object with\n * a 'file_id' or 'file_url', and deduplicates by file_id (falling back to file_url).\n * \n * WHERE TO ADJUST:\n * If ElevenLabs provides a specific key name in future API updates (e.g. 'media_id', 'attachment_url'),\n * adjust the candidate property checks in the walk() function below.\n */\n\nlet claimId = '';\ntry {\n  claimId = $('Format Claim Result').first().json.claim_id || $('Supabase Insert Claim').first().json[0]?.id || $('Supabase Insert Claim').first().json?.id;\n} catch (e) {\n  claimId = '';\n}\n\nfunction deriveExtension(mimeType) {\n  if (!mimeType) return 'bin';\n  const m = String(mimeType).toLowerCase();\n  if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';\n  if (m.includes('png')) return 'png';\n  if (m.includes('webp')) return 'webp';\n  if (m.includes('pdf')) return 'pdf';\n  if (m.includes('gif')) return 'gif';\n  if (m.includes('svg')) return 'svg';\n  if (m.includes('mp4')) return 'mp4';\n  if (m.includes('audio') || m.includes('mp3') || m.includes('wav')) return 'mp3';\n  return 'bin';\n}\n\nconst foundFiles = [];\nconst seenIds = new Set();\n\nfunction walk(obj) {\n  if (!obj || typeof obj !== 'object') return;\n\n  const fileId = obj.file_id || null;\n  const fileUrl = obj.file_url || null;\n\n  if (fileId || fileUrl) {\n    const dedupKey = String(fileId || fileUrl);\n    if (!seenIds.has(dedupKey)) {\n      seenIds.add(dedupKey);\n\n      const mimeType = obj.mime_type || obj.content_type || 'application/octet-stream';\n      let originalFilename = obj.original_filename || obj.filename || obj.name;\n      if (!originalFilename) {\n        const ext = deriveExtension(mimeType);\n        originalFilename = (fileId ? String(fileId).replace(/[^a-zA-Z0-9_-]/g, '_') : 'claim_attachment') + '.' + ext;\n      }\n\n      foundFiles.push({\n        file_id: fileId || dedupKey,\n        original_filename: originalFilename,\n        mime_type: mimeType,\n        file_url: fileUrl || (fileId ? `https://api.elevenlabs.io/v1/convai/files/${fileId}` : ''),\n        claim_id: claimId\n      });\n    }\n  }\n\n  if (Array.isArray(obj)) {\n    for (const item of obj) walk(item);\n  } else {\n    for (const key of Object.keys(obj)) {\n      walk(obj[key]);\n    }\n  }\n}\n\nconst inputData = $input.first().json;\nwalk(inputData);\n\nif (foundFiles.length === 0) {\n  return [];\n}\n\nreturn foundFiles.map(f => ({ json: f }));"
+      },
+      "id": "node-extract-claim-files",
+      "name": "Extract Claim Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.file_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "YOUR_ELEVENLABS_API_KEY"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "retry": {
+            "retry": {
+              "maxTries": 3,
+              "waitBetweenTries": 2000
+            }
+          }
+        }
+      },
+      "id": "node-download-claim-file",
+      "name": "Download Claim File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2600,
+        1400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://rmbfjtycldualfpunusm.supabase.co/storage/v1/object/claims-evidence/claims/{{ $('Extract Claim Files').item.json.claim_id }}/{{ $now.toMillis() }}_{{ $('Extract Claim Files').item.json.original_filename }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "={{ $('Extract Claim Files').item.json.mime_type || 'application/octet-stream' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "binary",
+        "inputDataFieldName": "data",
+        "options": {
+          "retry": {
+            "retry": {
+              "maxTries": 3,
+              "waitBetweenTries": 2000
+            }
+          }
+        }
+      },
+      "id": "node-upload-claim-file",
+      "name": "Upload Claim File to Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        1400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const fileItem = $('Extract Claim Files').item.json || {};\nconst uploadRes = $input.first().json || {};\n\nlet storagePath = '';\nif (uploadRes && uploadRes.Key) {\n  storagePath = uploadRes.Key.replace(/^claims-evidence\\//, '');\n} else {\n  storagePath = `claims/${fileItem.claim_id}/${fileItem.original_filename}`;\n}\n\nreturn [{\n  json: {\n    claim_id: fileItem.claim_id,\n    elevenlabs_file_id: fileItem.file_id || null,\n    original_filename: fileItem.original_filename,\n    mime_type: fileItem.mime_type || 'application/octet-stream',\n    storage_path: storagePath\n  }\n}];"
+      },
+      "id": "node-build-attachment-row",
+      "name": "Build Attachment Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/claim_attachments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "node-supabase-insert-attachment",
+      "name": "Supabase Insert Attachment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3380,
+        1400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "content": "## 5. get_orders (Search & Retrieve Orders)\n**Method**: `POST`\n**Path**: `/webhook/agent/get_orders`\n\n**ElevenLabs Tool Configuration**:\n- **Tool Name**: `get_orders`\n- **Description**: Look up and retrieve customer orders by phone number, email address, or Order ID. If an Order ID is provided, returns the specific order. If a phone number or email is provided, returns all matching orders for that customer.\n- **Parameters**:\n  - `phone` (string): Customer contact phone number\n  - `email` (string): Customer email address\n  - `order_id` (string): Specific Order ID (e.g. CKT-2026-100012)\n*(At least one of phone, email, or order_id must be provided)*\n\n**Spoken Result**: Speaks the found order details, status, or summarizes the list of matching orders.",
+        "height": 440,
+        "width": 320,
+        "color": 3
+      },
+      "id": "sticky-get-orders",
+      "name": "Sticky Note: get_orders",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -360,
+        1920
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent/get_orders",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-get-orders",
+      "name": "WH get_orders",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        1980
+      ],
+      "webhookId": "wh-get-orders"
+    },
+    {
+      "parameters": {
+        "jsCode": "function rawInput() {\n  const item = $input.first().json || {};\n  let body = item.body;\n  if (typeof body === \"string\") {\n    try { body = JSON.parse(body || \"{}\"); } catch (e) { body = {}; }\n  }\n  body = body || {};\n  const query = item.query || {};\n  return Object.assign({}, item, query, body);\n}\n\nfunction cleanString(v) {\n  if (v === undefined || v === null) return \"\";\n  const s = String(v).trim();\n  if (s.toLowerCase() === \"null\" || s.toLowerCase() === \"undefined\" || s === \"[null]\") return \"\";\n  return s;\n}\n\nfunction normalizeOrderId(val) {\n  if (!val) return \"\";\n  let s = cleanString(val).toUpperCase().replace(/\\s+/g, \"-\");\n  if (/^\\d{6}$/.test(s)) {\n    const year = new Date().getFullYear();\n    return \"CKT-\" + year + \"-\" + s;\n  }\n  const match = s.match(/CKT[-_ ]?(\\d{4})[-_ ]?(\\d+)/i);\n  if (match) {\n    return \"CKT-\" + match[1] + \"-\" + match[2].padStart(6, \"0\");\n  }\n  return s;\n}\n\nconst p = rawInput();\n\nconst rawOrderId = cleanString(p.order_id || p.tracking_id || p.tracking_number || p.orderId);\nconst orderId = rawOrderId ? normalizeOrderId(rawOrderId) : \"\";\n\nconst rawEmail = cleanString(p.email || p.customer_email || p.work_email);\nconst email = rawEmail ? rawEmail.toLowerCase() : \"\";\n\nconst rawPhone = cleanString(p.phone || p.phone_number || p.customer_phone || p.mobile);\nconst phone = rawPhone || \"\";\n\nconst conditions = [];\n\nif (orderId) {\n  conditions.push(\"order_id.ilike.\" + orderId);\n}\nif (email) {\n  conditions.push(\"email.ilike.\" + email);\n}\nif (phone) {\n  const digits = phone.replace(/\\D/g, \"\");\n  if (digits.length >= 7) {\n    const p1 = digits.slice(-7, -4);\n    const p2 = digits.slice(-4);\n    conditions.push(\"phone.ilike.*\" + p1 + \"*\" + p2 + \"*\");\n  } else {\n    conditions.push(\"phone.ilike.*\" + phone.trim() + \"*\");\n  }\n}\n\nconst isValid = conditions.length > 0;\n\nlet queryFilter = \"\";\nif (conditions.length === 1) {\n  queryFilter = conditions[0].replace(\".\", \"=\");\n} else if (conditions.length > 1) {\n  queryFilter = \"or=(\" + conditions.join(\",\") + \")\";\n}\n\nreturn [{\n  json: {\n    valid: isValid,\n    order_id: orderId || null,\n    email: email || null,\n    phone: phone || null,\n    query_filter: queryFilter,\n    http_status: isValid ? 200 : 422,\n    error_body: isValid ? null : {\n      ok: false,\n      status: \"validation_error\",\n      message: \"Please provide a phone number, email address, or Order ID so I can look up your orders.\",\n      missing: [\"phone\", \"email\", \"order_id\"]\n    }\n  }\n}];"
+      },
+      "id": "node-map-get-orders",
+      "name": "Map Get Orders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        1980
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-get-orders-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-get-orders-valid",
+      "name": "IF Get Orders Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        1980
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders?{{ $json.query_filter }}&order=created_at.desc&select=*,order_events(*)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-supabase-query-orders",
+      "name": "Supabase Query Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        780,
+        1920
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.error_body || { ok: false, status: 'error', message: 'Please provide phone, email or order_id' }) }}",
+        "responseCode": 422,
+        "options": {}
+      },
+      "id": "node-respond-get-orders-error",
+      "name": "Respond Get Orders Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        2100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\n\nif (res.error || (res.statusCode && res.statusCode >= 400)) {\n  const errMsg = (res.body && (res.body.message || res.body.error)) || res.message || res.error || \"Lookup error\";\n  return [{\n    json: {\n      ok: false,\n      status: \"error\",\n      message: \"I encountered an error retrieving your orders: \" + errMsg + \". Please try again.\",\n      http_status: 500\n    }\n  }];\n}\n\nlet mapData = {};\ntry {\n  mapData = $(\"Map Get Orders\").first().json || {};\n} catch (e) {\n  mapData = {};\n}\n\n// Extract array of orders\nlet rawOrders = [];\nif (Array.isArray(res)) {\n  rawOrders = res;\n} else if (res && res.body) {\n  rawOrders = Array.isArray(res.body) ? res.body : (res.body.id || res.body.order_id ? [res.body] : []);\n} else if (res && (res.id || res.order_id)) {\n  rawOrders = [res];\n}\n\nconst count = rawOrders.length;\n\nif (count === 0) {\n  const searchTerm = mapData.order_id || mapData.email || mapData.phone || \"the provided details\";\n  return [{\n    json: {\n      ok: false,\n      status: \"not_found\",\n      count: 0,\n      orders: [],\n      message: \"I could not find any active orders matching \" + searchTerm + \". Please verify your information and try again.\",\n      http_status: 200\n    }\n  }];\n}\n\n// Map each order cleanly with human-readable status and latest update\nconst STATUS_LABELS = {\n  order_placed: \"Order Placed\",\n  in_transit: \"In Transit\",\n  delivered: \"Delivered\",\n  delayed: \"Delayed\",\n  customs_hold: \"Customs Hold\",\n  on_hold: \"On Hold\",\n  cancelled: \"Cancelled\"\n};\n\nconst orders = rawOrders.map(o => {\n  const events = Array.isArray(o.order_events) ? o.order_events : [];\n  events.sort((a, b) => new Date(b.occurred_at || b.created_at || 0).getTime() - new Date(a.occurred_at || a.created_at || 0).getTime());\n  const latestEvent = events[0] || null;\n  const humanStatus = STATUS_LABELS[o.status] || (o.status ? o.status.replace(/_/g, \" \") : \"Processing\");\n\n  return {\n    id: o.id || null,\n    order_id: o.order_id,\n    customer_name: o.customer_name,\n    email: o.email,\n    phone: o.phone,\n    origin: o.origin,\n    destination: o.destination,\n    shipping_method: o.shipping_method,\n    cargo_description: o.cargo_description,\n    status: o.status,\n    human_status: humanStatus,\n    weight_kg: o.weight_kg,\n    packages: o.packages,\n    estimated_delivery_date: o.estimated_delivery_date,\n    latest_location: latestEvent ? latestEvent.location : null,\n    latest_update: latestEvent ? latestEvent.note : null,\n    created_at: o.created_at\n  };\n});\n\nlet speech = \"\";\nif (count === 1) {\n  const single = orders[0];\n  speech = \"I found 1 order for \" + single.customer_name + \": Order ID \" + single.order_id + \" from \" + single.origin + \" to \" + single.destination + \" is currently \" + single.human_status + \".\";\n  if (single.latest_location) {\n    speech += \" Current location: \" + single.latest_location + \".\";\n  }\n} else {\n  const idList = orders.slice(0, 3).map(o => o.order_id + \" (\" + o.human_status + \")\").join(\", \");\n  speech = \"I found \" + count + \" orders for your account: \" + idList + (count > 3 ? \", and \" + (count - 3) + \" more.\" : \".\");\n}\n\nreturn [{\n  json: {\n    ok: true,\n    status: count === 1 ? \"order_found\" : \"multiple_orders_found\",\n    count: count,\n    orders: orders,\n    message: speech\n  }\n}];"
+      },
+      "id": "node-format-get-orders-result",
+      "name": "Format Get Orders Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "responseCode": "={{ $json.http_status || 200 }}",
+        "options": {}
+      },
+      "id": "node-respond-get-orders-success",
+      "name": "Respond Get Orders Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1300,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 6. create_ticket (Support Ticket & Agent Handoff)\n**Method**: `POST`\n**Path**: `/webhook/agent/create_ticket`\n\n**ElevenLabs Tool Configuration**:\n- **Tool Name**: `create_ticket`\n- **Description**: Open a customer support ticket or request human agent handoff for complex logistics inquiries, complaints, billing issues, delays, damage claims, or follow-ups.\n- **Parameters**:\n  - `customer_name` (string, required): Customer's name\n  - `email` (string): Contact email address\n  - `phone` (string): Contact phone number\n  - `order_id` (string): Associated Order ID (e.g. CKT-2026-100015)\n  - `category` (string): Issue category (unanswered_question, complaint, delay, damage_claim, billing, quote_followup, callback_request, customs_legal, other)\n  - `priority` (string): Priority level (low, normal, high, urgent)\n  - `summary` (string, required): Short summary (3-200 chars)\n  - `details` (string, required): Detailed explanation of customer inquiry or issue\n  - `conversation_id` (string): ElevenLabs call ID (conv_...)\n*(At least one of email or phone must be provided)*\n\n**Spoken Result**: Speaks ticket creation confirmation with Ticket ID (TKT-YYYY-NNNN) and assures prompt agent follow-up.",
+        "height": 480,
+        "width": 320,
+        "color": 6
+      },
+      "id": "sticky-create-ticket",
+      "name": "Sticky Note: create_ticket",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -360,
+        2400
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent/create_ticket",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-create-ticket",
+      "name": "WH create_ticket",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        2460
+      ],
+      "webhookId": "wh-create-ticket"
+    },
+    {
+      "parameters": {
+        "jsCode": "function rawInput() {\n  const item = $input.first().json || {};\n  let body = item.body;\n  if (typeof body === 'string') {\n    try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }\n  }\n  body = body || {};\n  const query = item.query || {};\n  return Object.assign({}, item, query, body);\n}\n\nfunction cleanString(v) {\n  if (v === undefined || v === null) return '';\n  const s = String(v).trim();\n  if (s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined' || s === '[null]') return '';\n  return s;\n}\n\nfunction normalizeOrderId(val) {\n  if (!val) return '';\n  let s = cleanString(val).toUpperCase().replace(/\\s+/g, '-');\n  if (/^\\d{6}$/.test(s)) {\n    const year = new Date().getFullYear();\n    return \"CKT-\" + year + \"-\" + s;\n  }\n  const match = s.match(/CKT[-_ ]?(\\d{4})[-_ ]?(\\d+)/i);\n  if (match) {\n    return \"CKT-\" + match[1] + \"-\" + match[2].padStart(6, '0');\n  }\n  return s;\n}\n\nfunction simpleHash(str) {\n  let hash = 5381;\n  const s = String(str || '');\n  for (let i = 0; i < s.length; i++) {\n    hash = ((hash << 5) + hash) + s.charCodeAt(i);\n    hash = hash & hash;\n  }\n  return (hash >>> 0).toString(16).padStart(8, '0');\n}\n\nconst VALID_CATEGORIES = new Set([\n  'unanswered_question',\n  'complaint',\n  'delay',\n  'damage_claim',\n  'billing',\n  'quote_followup',\n  'callback_request',\n  'customs_legal',\n  'other'\n]);\n\nconst VALID_PRIORITIES = new Set([\n  'low',\n  'normal',\n  'high',\n  'urgent'\n]);\n\nconst URGENT_REGEX = /\\b(urgent|asap|emergency|lost|stolen)\\b/i;\n\nconst p = rawInput();\n\nconst rawConvId = cleanString(p.conversation_id || p.system__conversation_id || p.call_id) || ('conv_' + Date.now());\nconst customerName = cleanString(p.customer_name || p.name || p.full_name || p.caller_name);\nconst rawEmail = cleanString(p.email || p.customer_email || p.work_email);\nconst rawPhone = cleanString(p.phone || p.phone_number || p.customer_phone || p.mobile);\nconst rawOrderId = cleanString(p.order_id || p.tracking_id || p.tracking_number);\nconst orderId = rawOrderId ? normalizeOrderId(rawOrderId) : null;\nconst rawCategory = cleanString(p.category || p.issue_type || p.type).toLowerCase();\nconst rawPriority = cleanString(p.priority || p.urgency).toLowerCase();\nconst rawSummary = cleanString(p.summary || p.subject || p.title || p.claim_description || p.description);\nconst rawDetails = cleanString(p.details || p.notes || p.description || p.message || p.transcript_context || rawSummary);\n\n// Normalize Email\nlet email = null;\nif (rawEmail) {\n  const cleanedEmail = rawEmail.toLowerCase();\n  if (cleanedEmail.includes('@') && cleanedEmail.includes('.')) {\n    email = cleanedEmail;\n  }\n}\n\n// Normalize Phone\nlet phone = null;\nif (rawPhone) {\n  const hasLeadingPlus = rawPhone.startsWith('+');\n  const digits = rawPhone.replace(/\\D/g, '');\n  if (digits.length > 0) {\n    phone = (hasLeadingPlus ? '+' : '') + digits;\n  }\n}\n\n// Summary formatting (3 to 200 chars)\nlet summary = rawSummary;\nif (!summary && rawDetails) {\n  summary = rawDetails.slice(0, 100);\n}\nif (summary.length > 200) {\n  summary = summary.slice(0, 200);\n}\n\n// Details formatting (at least 5 chars, slice to 4000)\nlet details = rawDetails || summary || 'Customer requested support assistance.';\nif (details.length > 4000) {\n  details = details.slice(0, 4000);\n}\n\n// Category\nlet category = VALID_CATEGORIES.has(rawCategory) ? rawCategory : 'other';\n\n// Priority & Elevation\nlet priority = VALID_PRIORITIES.has(rawPriority) ? rawPriority : 'normal';\nif (category === 'damage_claim' || category === 'delay') {\n  if (priority === 'low' || priority === 'normal') priority = 'high';\n}\nif (URGENT_REGEX.test(details) || URGENT_REGEX.test(summary)) {\n  if (priority === 'low' || priority === 'normal') priority = 'high';\n}\n\n// Validation\nconst missing = [];\nif (!customerName) missing.push('customer_name');\nif (!email && !phone) missing.push('email or phone');\nif (!summary || summary.length < 3) missing.push('summary');\nif (!details || details.length < 5) missing.push('details');\n\nconst isValid = missing.length === 0;\n\nlet errorMsg = '';\nif (!isValid) {\n  if (!customerName) {\n    errorMsg = \"Please provide your name so I can create a support ticket for you.\";\n  } else if (!email && !phone) {\n    errorMsg = \"Please provide a contact phone number or email address so our team can follow up with you.\";\n  } else if (!summary || summary.length < 3) {\n    errorMsg = \"Please provide a brief summary of what you need assistance with.\";\n  } else {\n    errorMsg = \"Please provide a few more details about your inquiry.\";\n  }\n}\n\nconst summaryHash = simpleHash((summary || '').toLowerCase());\nconst dedupeKey = `${rawConvId}:${category}:${summaryHash}`;\n\nreturn [{\n  json: {\n    valid: isValid,\n    customer_name: customerName,\n    email: email,\n    phone: phone,\n    order_id: orderId,\n    category: category,\n    priority: priority,\n    summary: summary,\n    details: details,\n    source: 'chat_agent',\n    is_handoff: true,\n    conversation_id: rawConvId,\n    dedupe_key: dedupeKey,\n    http_status: isValid ? 200 : 422,\n    error_body: isValid ? null : {\n      ok: false,\n      status: 'validation_error',\n      message: errorMsg,\n      missing: missing\n    }\n  }\n}];"
+      },
+      "id": "node-map-ticket",
+      "name": "Map Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-ticket-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-ticket-valid",
+      "name": "IF Ticket Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.error_body || { ok: false, status: 'validation_error', message: 'Name, contact details and issue description are required.' }) }}",
+        "responseCode": "={{ $json.http_status || 422 }}",
+        "options": {}
+      },
+      "id": "node-respond-ticket-error",
+      "name": "Respond Ticket Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        2660
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-order-id",
+              "leftValue": "={{ Boolean($json.order_id) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-ticket-has-order",
+      "name": "IF Ticket Has Order",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        780,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://rmbfjtycldualfpunusm.supabase.co/rest/v1/orders?order_id=eq.{{ encodeURIComponent($json.order_id) }}&select=id,order_id,email,phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-supabase-lookup-order-for-ticket",
+      "name": "Supabase Lookup Order for Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1040,
+        2400
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nlet ticket = {};\ntry {\n  ticket = $('Map Ticket').first().json || {};\n} catch (e) {\n  ticket = {};\n}\n\nlet orders = [];\nif (Array.isArray(res)) {\n  orders = res;\n} else if (res && res.body) {\n  orders = Array.isArray(res.body) ? res.body : (res.body.id || res.body.order_id ? [res.body] : []);\n} else if (res && (res.id || res.order_id)) {\n  orders = [res];\n}\n\nlet orderUuid = null;\nlet identityVerified = false;\n\nif (orders.length === 1 && orders[0] && (orders[0].id || orders[0].order_id)) {\n  const matchedOrder = orders[0];\n  orderUuid = matchedOrder.id || null;\n\n  const ticketEmail = (ticket.email || '').toLowerCase().trim();\n  const orderEmail = (matchedOrder.email || '').toLowerCase().trim();\n  const emailMatches = Boolean(ticketEmail && orderEmail && ticketEmail === orderEmail);\n\n  const ticketDigits = (ticket.phone || '').replace(/\\D/g, '');\n  const orderDigits = (matchedOrder.phone || '').replace(/\\D/g, '');\n  const phoneMatches = Boolean(\n    ticketDigits.length >= 7 &&\n    orderDigits.length >= 7 &&\n    ticketDigits.slice(-7) === orderDigits.slice(-7)\n  );\n\n  identityVerified = emailMatches || phoneMatches;\n}\n\nconst payload = {\n  customer_name: ticket.customer_name || '',\n  email: ticket.email || null,\n  phone: ticket.phone || null,\n  order_id: ticket.order_id || null,\n  order_uuid: orderUuid,\n  category: ticket.category || 'other',\n  priority: ticket.priority || 'normal',\n  summary: ticket.summary || '',\n  details: ticket.details || '',\n  source: 'chat_agent',\n  is_handoff: true,\n  identity_verified: identityVerified,\n  conversation_id: ticket.conversation_id || '',\n  dedupe_key: ticket.dedupe_key || ''\n};\n\nreturn [{\n  json: {\n    ticket_payload: payload,\n    conversation_id: ticket.conversation_id,\n    customer_name: ticket.customer_name\n  }\n}];"
+      },
+      "id": "node-verify-ticket-identity",
+      "name": "Verify Ticket Identity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let ticket = {};\ntry {\n  ticket = $('Map Ticket').first().json || $input.first().json || {};\n} catch (e) {\n  ticket = $input.first().json || {};\n}\n\nconst payload = {\n  customer_name: ticket.customer_name || '',\n  email: ticket.email || null,\n  phone: ticket.phone || null,\n  order_id: null,\n  order_uuid: null,\n  category: ticket.category || 'other',\n  priority: ticket.priority || 'normal',\n  summary: ticket.summary || '',\n  details: ticket.details || '',\n  source: 'chat_agent',\n  is_handoff: true,\n  identity_verified: false,\n  conversation_id: ticket.conversation_id || '',\n  dedupe_key: ticket.dedupe_key || ''\n};\n\nreturn [{\n  json: {\n    ticket_payload: payload,\n    conversation_id: ticket.conversation_id,\n    customer_name: ticket.customer_name\n  }\n}];"
+      },
+      "id": "node-format-unlinked-ticket-payload",
+      "name": "Format Unlinked Ticket Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        2560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/rpc/create_ticket",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p\": $json.ticket_payload } }}",
+        "options": {}
+      },
+      "id": "node-supabase-rpc-create-ticket",
+      "name": "Supabase RPC Create Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1560,
+        2460
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-rpc-create-success",
+              "leftValue": "={{ !Boolean($json.error || ($json.statusCode && $json.statusCode >= 400)) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-rpc-create-success",
+      "name": "IF RPC Create Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1820,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, status: 'error', message: 'I was unable to create your support ticket right now. Please try again or ask to be connected with an agent.' }) }}",
+        "responseCode": 500,
+        "options": {}
+      },
+      "id": "node-respond-ticket-save-error",
+      "name": "Respond Ticket Save Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2080,
+        2660
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\n\nlet ticketData = null;\nif (res && res.id) {\n  ticketData = res;\n} else if (res && res.body) {\n  ticketData = res.body;\n} else if (Array.isArray(res) && res.length > 0) {\n  ticketData = res[0];\n}\n\nlet mapData = {};\ntry {\n  mapData = $('Map Ticket').first().json || {};\n} catch (e) {\n  mapData = {};\n}\n\nconst ticketId = (ticketData && ticketData.ticket_id) || 'TKT-' + new Date().getFullYear() + '-CREATED';\nconst ticketUuid = (ticketData && ticketData.id) || null;\nconst isDuplicate = Boolean(ticketData && ticketData.duplicate);\nconst customerName = mapData.customer_name || 'Customer';\nconst convId = mapData.conversation_id || '';\n\nlet speech = '';\nif (isDuplicate) {\n  speech = \"Support ticket \" + ticketId + \" has already been logged for this conversation. A support agent is currently reviewing it.\";\n} else {\n  speech = \"I have opened support ticket \" + ticketId + \" for \" + customerName + \". Our operations team has been notified and a specialist will follow up shortly.\";\n}\n\nreturn [{\n  json: {\n    ok: true,\n    status: 'ticket_created',\n    ticket_id: ticketId,\n    ticket_uuid: ticketUuid,\n    duplicate: isDuplicate,\n    customer_name: customerName,\n    conversation_id: convId,\n    message: speech,\n    response_body: {\n      ok: true,\n      status: 'ticket_created',\n      ticket_id: ticketId,\n      ticket_uuid: ticketUuid,\n      duplicate: isDuplicate,\n      message: speech\n    }\n  }\n}];"
+      },
+      "id": "node-format-ticket-response",
+      "name": "Format Ticket Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response_body) }}",
+        "responseCode": 200,
+        "options": {}
+      },
+      "id": "node-respond-ticket-success",
+      "name": "Respond Ticket Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2340,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-should-attach-transcript",
+              "leftValue": "={{ !Boolean($json.duplicate) && Boolean($json.conversation_id && $json.conversation_id.startsWith('conv_')) && Boolean($json.ticket_uuid) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-should-attach-transcript",
+      "name": "IF Should Attach Transcript",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2600,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.elevenlabs.io/v1/convai/conversations/{{ encodeURIComponent($json.conversation_id) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "YOUR_ELEVENLABS_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-elevenlabs-get-conversation",
+      "name": "ElevenLabs Get Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2860,
+        2460
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const convRes = $input.first().json;\nlet ticketInfo = {};\ntry {\n  ticketInfo = $('Format Ticket Response').first().json || {};\n} catch (e) {\n  ticketInfo = {};\n}\n\nconst ticketUuid = ticketInfo.ticket_uuid;\nif (!ticketUuid) {\n  return [];\n}\n\nconst hasError = Boolean(\n  convRes.error ||\n  (convRes.statusCode && convRes.statusCode >= 400) ||\n  (convRes.status && convRes.status >= 400)\n);\n\nlet rawTranscript = null;\nif (!hasError && Array.isArray(convRes.transcript)) {\n  rawTranscript = convRes.transcript;\n} else if (!hasError && convRes.body && Array.isArray(convRes.body.transcript)) {\n  rawTranscript = convRes.body.transcript;\n}\n\nlet noteKind = 'transcript';\nlet transcriptText = '';\n\nif (hasError || rawTranscript === null || rawTranscript.length === 0) {\n  noteKind = 'system';\n  transcriptText = 'Transcript could not be retrieved.';\n} else {\n  const lines = [];\n  for (const entry of rawTranscript) {\n    if (!entry || entry.message === null || entry.message === undefined) continue;\n    const msg = String(entry.message).trim();\n    if (!msg) continue;\n    const role = String(entry.role || '').toLowerCase();\n    if (role === 'user') {\n      lines.push('Customer: ' + msg);\n    } else if (role === 'agent') {\n      lines.push('Agent: ' + msg);\n    } else {\n      lines.push('System: ' + msg);\n    }\n  }\n\n  if (lines.length === 0) {\n    noteKind = 'system';\n    transcriptText = 'Transcript could not be retrieved.';\n  } else {\n    transcriptText = lines.join('\\n');\n    const maxChars = 20000;\n    if (transcriptText.length > maxChars) {\n      const marker = '\\n[truncated]';\n      transcriptText = transcriptText.slice(0, maxChars - marker.length) + marker;\n    }\n  }\n}\n\nreturn [{\n  json: {\n    p_ticket_uuid: ticketUuid,\n    p_author: 'system',\n    p_kind: noteKind,\n    p_body: transcriptText\n  }\n}];"
+      },
+      "id": "node-format-conversation-transcript",
+      "name": "Format Conversation Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        2460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rmbfjtycldualfpunusm.supabase.co/rest/v1/rpc/add_ticket_note",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "node-supabase-insert-transcript-note",
+      "name": "Supabase Insert Transcript Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        3380,
+        2460
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WH create_quote": {
+      "main": [
+        [
+          {
+            "node": "Map Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Quote": {
+      "main": [
+        [
+          {
+            "node": "IF Quote Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Quote Valid": {
+      "main": [
+        [
+          {
+            "node": "Supabase Insert Quote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Quote Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Insert Quote": {
+      "main": [
+        [
+          {
+            "node": "Format Quote Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Quote Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Quote Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WH create_order": {
+      "main": [
+        [
+          {
+            "node": "Map Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Order": {
+      "main": [
+        [
+          {
+            "node": "IF Order Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Order Valid": {
+      "main": [
+        [
+          {
+            "node": "Supabase Insert Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Order Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Insert Order": {
+      "main": [
+        [
+          {
+            "node": "Format Order Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Order Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Order Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Order Success": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Structure Order Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Structure Order Data": {
+      "main": [
+        [
+          {
+            "node": "AI Generate Order Summary HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Generate Order Summary HTML": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF & Email Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF & Email Payload": {
+      "main": [
+        [
+          {
+            "node": "Generate Order PDF (PDFShift)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Order PDF (PDFShift)": {
+      "main": [
+        [
+          {
+            "node": "Send Order Email to Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WH track_order": {
+      "main": [
+        [
+          {
+            "node": "Map Track Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Track Order": {
+      "main": [
+        [
+          {
+            "node": "IF Track Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Track Valid": {
+      "main": [
+        [
+          {
+            "node": "Supabase Query Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Track Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Query Order": {
+      "main": [
+        [
+          {
+            "node": "Format Track Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Track Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Track Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WH submit_claim": {
+      "main": [
+        [
+          {
+            "node": "Map Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Claim": {
+      "main": [
+        [
+          {
+            "node": "IF Claim Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Claim Valid": {
+      "main": [
+        [
+          {
+            "node": "Supabase Insert Claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Claim Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Insert Claim": {
+      "main": [
+        [
+          {
+            "node": "Format Claim Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Claim Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Claim Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Claim Success": {
+      "main": [
+        [
+          {
+            "node": "IF Has File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has File": {
+      "main": [
+        [
+          {
+            "node": "Wait Transcript Settle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Transcript Settle": {
+      "main": [
+        [
+          {
+            "node": "Get ElevenLabs Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get ElevenLabs Conversation": {
+      "main": [
+        [
+          {
+            "node": "Extract Claim Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Claim Files": {
+      "main": [
+        [
+          {
+            "node": "Download Claim File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Claim File": {
+      "main": [
+        [
+          {
+            "node": "Upload Claim File to Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Claim File to Storage": {
+      "main": [
+        [
+          {
+            "node": "Build Attachment Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Attachment Row": {
+      "main": [
+        [
+          {
+            "node": "Supabase Insert Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WH get_orders": {
+      "main": [
+        [
+          {
+            "node": "Map Get Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Get Orders": {
+      "main": [
+        [
+          {
+            "node": "IF Get Orders Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Get Orders Valid": {
+      "main": [
+        [
+          {
+            "node": "Supabase Query Orders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Get Orders Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Query Orders": {
+      "main": [
+        [
+          {
+            "node": "Format Get Orders Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Get Orders Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Get Orders Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WH create_ticket": {
+      "main": [
+        [
+          {
+            "node": "Map Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Ticket": {
+      "main": [
+        [
+          {
+            "node": "IF Ticket Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Ticket Valid": {
+      "main": [
+        [
+          {
+            "node": "IF Ticket Has Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Ticket Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Ticket Has Order": {
+      "main": [
+        [
+          {
+            "node": "Supabase Lookup Order for Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Unlinked Ticket Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Lookup Order for Ticket": {
+      "main": [
+        [
+          {
+            "node": "Verify Ticket Identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Ticket Identity": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC Create Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Unlinked Ticket Payload": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC Create Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC Create Ticket": {
+      "main": [
+        [
+          {
+            "node": "IF RPC Create Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF RPC Create Success": {
+      "main": [
+        [
+          {
+            "node": "Format Ticket Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Ticket Save Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Ticket Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Ticket Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Ticket Success": {
+      "main": [
+        [
+          {
+            "node": "IF Should Attach Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Should Attach Transcript": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs Get Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs Get Conversation": {
+      "main": [
+        [
+          {
+            "node": "Format Conversation Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Conversation Transcript": {
+      "main": [
+        [
+          {
+            "node": "Supabase Insert Transcript Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "conversation_id": "conv_delay_67890",
+  "customer_name": "Diana Delayed",
+  "phone": "+44 7911 123456",
+  "category": "delay",
+  "priority": "normal",
+  "summary": "Shipment delayed by 4 days",
+  "details": "Container has been stuck at port customs clearance since Tuesday."
+}

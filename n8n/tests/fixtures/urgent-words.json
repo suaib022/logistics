@@ -1,0 +1,9 @@
+{
+  "conversation_id": "conv_urgent_98765",
+  "customer_name": "Bob Emergency",
+  "email": "bob@emergency.org",
+  "category": "unanswered_question",
+  "priority": "low",
+  "summary": "Medical cargo lost in transit",
+  "details": "This is an emergency medical supply. It was lost during transfer and we need it ASAP!"
+}
