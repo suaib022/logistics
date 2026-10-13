@@ -16,6 +16,7 @@ test.describe('Dashboard E2E', () => {
     // Fill required fields
     await page.getByPlaceholder('Enter your full name').fill('Test User');
     await page.getByPlaceholder('jane@company.com').fill('test@example.com');
+    await page.getByPlaceholder('Enter your phone number').fill('+1 555-0199');
     await page.getByPlaceholder('Enter departure city or port').fill('Origin A');
     await page.getByPlaceholder('Enter arrival city or port').fill('Destination B');
     
@@ -49,6 +50,7 @@ test.describe('Dashboard E2E', () => {
     // 3. Track Order
     await page.goto('http://localhost:3000/track-order');
     await page.getByPlaceholder('Enter your order ID').fill(orderId);
+    await page.getByPlaceholder('Enter phone number').fill('+1 555-0199');
     await page.getByRole('button', { name: 'Track Order' }).click();
 
     // Assert summary and status
